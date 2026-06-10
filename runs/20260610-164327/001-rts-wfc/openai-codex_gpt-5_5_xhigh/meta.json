@@ -1,0 +1,9 @@
+{
+  "prompt": "001-rts-wfc",
+  "provider": "openai-codex",
+  "model": "gpt-5.5",
+  "effort": "xhigh",
+  "exit_code": 0,
+  "status": "ok",
+  "duration_seconds": 1421
+}

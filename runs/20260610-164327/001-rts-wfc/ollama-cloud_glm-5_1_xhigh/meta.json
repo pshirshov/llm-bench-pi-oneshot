@@ -1,0 +1,9 @@
+{
+  "prompt": "001-rts-wfc",
+  "provider": "ollama-cloud",
+  "model": "glm-5.1",
+  "effort": "xhigh",
+  "exit_code": 0,
+  "status": "ok",
+  "duration_seconds": 2156
+}

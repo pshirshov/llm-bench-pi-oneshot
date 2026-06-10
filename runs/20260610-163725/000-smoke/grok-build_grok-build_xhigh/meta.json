@@ -1,0 +1,9 @@
+{
+  "prompt": "000-smoke",
+  "provider": "grok-build",
+  "model": "grok-build",
+  "effort": "xhigh",
+  "exit_code": 0,
+  "status": "ok",
+  "duration_seconds": 28
+}

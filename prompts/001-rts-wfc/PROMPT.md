@@ -1,0 +1,109 @@
+# Task: build "Warband" — a complete in-browser real-time strategy game
+
+Build a complete, playable RTS in the spirit of Warcraft 2, delivered as a web
+application in the **current (empty) working directory**. Work autonomously until the
+game is complete; do not stop to ask questions. Where this spec leaves a detail open,
+make a sensible genre-conventional choice and document it in the README.
+
+## Technical constraints
+
+- The environment already provides Node.js (LTS), npm, npx, and git on PATH, with npm
+  registry access. Do not install or switch toolchains (no nvm/volta/system package
+  managers) and do not create Nix or direnv files — scaffold the project with npm only.
+- TypeScript with `"strict": true`. Vite for dev/build. Vitest for tests. ESLint for lint.
+- Rendering: Canvas 2D. Programmatic placeholder art (colored shapes/sprites drawn in
+  code) is expected — no external assets, no asset downloads.
+- **No runtime dependencies.** `package.json` `dependencies` must be empty or absent;
+  game engines and frameworks (Phaser, PixiJS, React, etc.) are forbidden. Dev
+  dependencies (vite, typescript, vitest, eslint) are allowed.
+- npm scripts: `dev`, `build`, `preview`, `test`, `lint`. All of `build`, `test`,
+  `lint` must exit 0.
+- All randomness must flow through one seeded PRNG (e.g. mulberry32). The active seed
+  is displayed in the UI and can be set via the `?seed=<number>` URL parameter, so any
+  map can be reproduced exactly.
+- A fixed-timestep simulation loop decoupled from rendering. Target 60 FPS with 100+
+  units alive on a 64x64 map; use spatial partitioning for range queries if needed.
+- No console errors or unhandled rejections during normal play.
+
+## Game specification
+
+**Factions.** Two playable factions, Humans and Orcs, with mirrored mechanics but
+distinct names, colors, and unit/building appearance. The player picks a faction; the
+AI plays the other.
+
+**Resources.** Three: **gold** (harvested from gold-mine tiles), **wood** (harvested
+by chopping forest tiles, which depletes them), and **food/supply** (capacity granted
+by Town Hall and Farms; training is blocked at the supply cap).
+
+**Buildings** (5 per faction, mirrored): Town Hall (resource drop-off, trains Workers),
+Farm (+supply), Barracks (trains military units), Lumber Mill (wood drop-off, unlocks
+ranged unit), Guard Tower (static ranged defense). Buildings have cost, build time
+(constructed on-site by a Worker), hit points, and a grid footprint; placement shows a
+validity preview and rejects blocked/occupied tiles.
+
+**Units** (4 per faction, mirrored): Worker (harvests, builds, repairs), a melee
+infantry (Footman / Grunt), a ranged unit (Archer / Spearthrower; requires Lumber
+Mill), and a heavy melee unit (Knight / Ogre; requires both Barracks and Lumber Mill).
+Each unit has HP, armor, attack damage, attack range, attack cooldown, move speed,
+sight radius, gold/wood cost, supply cost, and training time. Use a single data-driven
+stats table.
+
+**Combat.** Attack orders and attack-move; idle/guarding units auto-acquire hostile
+targets entering sight; ranged attacks spawn visible projectiles; damage = attacker
+damage minus defender armor (minimum 1); dead entities are removed and corpses fade.
+
+**Movement.** A* pathfinding on the tile grid (8-directional, no corner cutting
+through blocked diagonals). Moving units avoid each other; a group ordered to one
+point must arrive and settle without permanent mutual blocking or oscillation.
+
+**Fog of war.** Three states per tile: unexplored (black), explored (dimmed, shows
+last-seen terrain/buildings), visible (live). Enemy units are only drawn when visible.
+The minimap respects fog.
+
+**Controls & UI.** Left-click select, left-drag box select, Shift-click to add to
+selection; right-click issues the context-sensitive order (move / attack / harvest /
+repair / build-placement confirm). Control groups via Ctrl+1..9 / 1..9. Viewport
+scrolling by arrow keys, edge-of-screen mouse, and minimap click/drag. HUD: top
+resource bar (gold, wood, supply used/cap, seed), minimap with fog + viewport
+rectangle, selection panel (portraits/stats; build & train buttons with costs and
+progress bars). Pause (Space) and 1x/2x speed toggle.
+
+**AI opponent.** A scripted-strategy AI for the opposing faction that: maintains
+Worker saturation on gold and wood; follows a build order (supply ahead of demand,
+Barracks, Lumber Mill, defensive towers); trains a mixed army continuously; sends
+escalating attack waves at the player's base (first wave within ~4 minutes of game
+start at difficulty 1); defends its base by pulling military units to threats; rebuilds
+destroyed buildings. Difficulty (1-5) scales AI starting resources, harvest-rate
+bonus, and wave size/cadence.
+
+**Win/lose.** A side loses when all its buildings are destroyed. Show a victory/defeat
+screen; victory unlocks and advances to the next level.
+
+## Level generation — Wave Function Collapse
+
+Maps are generated by a genuine WFC implementation — minimal-entropy cell selection
+with adjacency-constraint propagation over a weighted tile set — **not** plain noise or
+uniform random scatter.
+
+- Tile set (at least): grass, dirt, forest, water, rock/mountain, gold mine. Define an
+  explicit adjacency-rule table (e.g. water borders water/dirt only; gold mines sit in
+  grass/dirt clearings) and per-tile weights.
+- Post-generation playability pass: exactly two start locations on sufficiently large
+  buildable areas, mutually reachable by land; each start has a gold mine and forest
+  within reach; approximate resource fairness between the two starts. If a generated
+  map fails these constraints, re-collapse or repair deterministically (still driven by
+  the seed).
+- **Campaign:** 5 levels of progressively increasing complexity — map size grows
+  (e.g. 32x32 up to 96x96), terrain gets more constrained (more water/mountains,
+  natural chokepoints, scarcer resources), and AI difficulty rises (1 through 5).
+  Include a level-select screen showing locked/unlocked state; each level's map derives
+  deterministically from (campaign seed, level number).
+
+## Tests & docs
+
+- Unit tests (>= 15 meaningful assertions overall) covering at minimum: WFC adjacency
+  constraint propagation and determinism for a fixed seed; A* correctness (shortest
+  path length, no corner cutting, unreachable handling); combat damage math and supply
+  accounting.
+- `README.md`: how to run, full controls reference, architecture overview (simulation
+  / rendering / input separation), and any spec decisions you made.

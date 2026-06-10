@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Warband</title>
+    <style>
+      html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #0a0a12; }
+      #app { width: 100vw; height: 100vh; position: relative; }
+      canvas { display: block; image-rendering: pixelated; }
+      .screen {
+        position: absolute; inset: 0; display: flex; flex-direction: column;
+        align-items: center; justify-content: center; gap: 16px;
+        background: radial-gradient(ellipse at center, #1a2030 0%, #0a0a12 100%);
+        color: #e8e0c8; font-family: Georgia, 'Times New Roman', serif; z-index: 10;
+      }
+      .screen h1 { font-size: 56px; margin: 0 0 8px 0; letter-spacing: 6px; color: #d8b542; text-shadow: 0 2px 8px #000; }
+      .screen h2 { font-size: 28px; margin: 0; }
+      .screen p { max-width: 520px; text-align: center; color: #b0a888; margin: 4px 0; }
+      .screen button {
+        font-family: inherit; font-size: 20px; padding: 10px 32px; cursor: pointer;
+        background: #2a3040; color: #e8e0c8; border: 2px solid #6a7088; border-radius: 4px;
+      }
+      .screen button:hover:not(:disabled) { background: #3a4458; border-color: #d8b542; }
+      .screen button:disabled { opacity: 0.35; cursor: default; }
+      .screen .row { display: flex; gap: 16px; }
+      .screen .faction-btn { font-size: 24px; padding: 20px 40px; }
+      .screen .small { font-size: 14px; color: #888; }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

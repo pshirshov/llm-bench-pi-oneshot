@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Warband — RTS</title>
+  <style>
+    html, body { margin: 0; padding: 0; background: #111; color: #ddd; font-family: monospace, sans-serif; overflow: hidden; }
+    #root { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: #000; }
+    canvas { image-rendering: pixelated; border: 2px solid #333; background: #000; }
+    #overlay { position: absolute; pointer-events: none; }
+    .hidden { display: none !important; }
+    .menu { position: absolute; inset: 0; background: rgba(0,0,0,0.85); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100; color: #fff; }
+    .menu h1 { font-size: 3em; margin: 0 0 20px; letter-spacing: 4px; color: #ffcc66; text-shadow: 0 0 10px #330; }
+    .menu button { background: #222; border: 2px solid #666; color: #ffcc66; padding: 10px 30px; margin: 8px; font: 16px monospace; cursor: pointer; min-width: 220px; }
+    .menu button:hover { background: #333; border-color: #ffcc66; }
+    .menu .level { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+    .level-btn { min-width: 70px; padding: 8px 12px; }
+    .level-btn.locked { opacity: 0.5; cursor: not-allowed; }
+    .hud { position: absolute; top: 0; left: 0; right: 0; height: 36px; background: rgba(20,20,20,0.92); border-bottom: 2px solid #444; display: flex; align-items: center; padding: 0 12px; font-size: 14px; z-index: 50; pointer-events: auto; }
+    .hud-item { margin-right: 20px; display: flex; align-items: center; gap: 6px; }
+    .resource { color: #ffcc66; }
+    .panel { position: absolute; bottom: 0; right: 0; width: 240px; background: rgba(20,20,20,0.95); border-left: 2px solid #444; border-top: 2px solid #444; padding: 8px; font-size: 12px; z-index: 50; pointer-events: auto; }
+    .minimap { position: absolute; bottom: 10px; left: 10px; border: 2px solid #444; background: #000; z-index: 60; pointer-events: auto; }
+    .status { position: absolute; top: 50px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.8); padding: 8px 16px; border: 1px solid #666; z-index: 70; }
+    .winlose { position: absolute; inset: 0; background: rgba(0,0,0,0.9); display: flex; align-items: center; justify-content: center; flex-direction: column; z-index: 200; font-size: 2em; }
+    .winlose button { font-size: 0.6em; margin-top: 20px; }
+    .seed { color: #888; font-size: 11px; }
+  </style>
+  <script type="module" crossorigin src="/assets/index-BnLWMh1E.js"></script>
+</head>
+<body>
+  <div id="root">
+    <canvas id="game" width="960" height="720"></canvas>
+  </div>
+</body>
+</html>
