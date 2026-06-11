@@ -5,3 +5,8 @@ node_modules/
 
 .codegraph/
 site/
+
+# cq git-object ledger backend (managed) — do not edit
+docs/*.md
+docs/ledgers.yaml
+docs/.locks/

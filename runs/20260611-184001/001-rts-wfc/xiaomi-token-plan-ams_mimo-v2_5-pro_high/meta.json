@@ -1,0 +1,9 @@
+{
+  "prompt": "001-rts-wfc",
+  "provider": "xiaomi-token-plan-ams",
+  "model": "mimo-v2.5-pro",
+  "effort": "high",
+  "exit_code": 0,
+  "status": "ok",
+  "duration_seconds": 758
+}
