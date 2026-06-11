@@ -56,6 +56,8 @@ export interface BuildingStats {
   readonly footprint: { readonly w: number; readonly h: number };
   /** Supply capacity granted by this building (0 if none). */
   readonly supplyProvided: number;
+  /** Sight radius in tiles (fog-of-war visibility from this building). */
+  readonly sight: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -143,6 +145,7 @@ const BUILDING_NUMERIC: Record<BuildingKind, NumericBuildingStats> = {
     buildTime: 0,
     footprint: { w: 4, h: 4 },
     supplyProvided: 5,
+    sight: 6,
   },
   farm: {
     hp: 250,
@@ -151,6 +154,7 @@ const BUILDING_NUMERIC: Record<BuildingKind, NumericBuildingStats> = {
     buildTime: 100, // 5 s
     footprint: { w: 2, h: 2 },
     supplyProvided: 4,
+    sight: 3,
   },
   barracks: {
     hp: 600,
@@ -159,6 +163,7 @@ const BUILDING_NUMERIC: Record<BuildingKind, NumericBuildingStats> = {
     buildTime: 200, // 10 s
     footprint: { w: 3, h: 3 },
     supplyProvided: 0,
+    sight: 4,
   },
   lumberMill: {
     hp: 500,
@@ -167,6 +172,7 @@ const BUILDING_NUMERIC: Record<BuildingKind, NumericBuildingStats> = {
     buildTime: 150, // 7.5 s
     footprint: { w: 3, h: 3 },
     supplyProvided: 0,
+    sight: 4,
   },
   guardTower: {
     hp: 400,
@@ -175,6 +181,7 @@ const BUILDING_NUMERIC: Record<BuildingKind, NumericBuildingStats> = {
     buildTime: 120, // 6 s
     footprint: { w: 2, h: 2 },
     supplyProvided: 0,
+    sight: 7,
   },
 };
 

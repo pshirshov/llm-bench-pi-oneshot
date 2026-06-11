@@ -26,6 +26,8 @@ import type { MapGenReport } from "../wfc/mapgen.js";
 import { GameMap } from "./gamemap.js";
 import { idle } from "./orders.js";
 import type { Building, Footprint, Unit, Projectile } from "./entity.js";
+import { createFogMap } from "./fog.js";
+import type { FogMap } from "./fog.js";
 
 // ---------------------------------------------------------------------------
 // Starting-condition constants (genre-conventional; documented for tuning)
@@ -106,10 +108,12 @@ export interface World {
   nextId(): EntityId;
 
   /**
-   * Fog-of-war state, filled by T11. Optional so the world is constructible
-   * before fog exists; phases that need it must guard on its presence.
+   * Fog-of-war state: one `Grid<FogState>` per faction, initialised in
+   * `createWorld` by T11. Optional on the interface so the type is forward-
+   * compatible with worlds constructed without calling `createWorld` directly
+   * (e.g. in unit tests that build a minimal World by hand).
    */
-  fog?: unknown;
+  fog?: FogMap;
 }
 
 // ---------------------------------------------------------------------------
@@ -436,6 +440,7 @@ export function createWorld(
     rng: createRng(seed).fork(`world-${levelIndex}`),
     mapReport: report,
     nextEntityId: 1,
+    fog: createFogMap(width, height),
     nextId(): EntityId {
       return makeEntityId(this.nextEntityId++);
     },

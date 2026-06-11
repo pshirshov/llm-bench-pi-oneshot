@@ -31,6 +31,7 @@ import type { World } from "./world.js";
 import { phaseMovement } from "./movement.js";
 import { phaseCombat } from "./combat.js";
 import { phaseEconomy as phaseEconomyImpl } from "./economy.js";
+import { phaseFog as phaseFogImpl } from "./fog.js";
 
 /** Fixed simulation rate in ticks per second (decoupled from render FPS). */
 export const SIM_HZ = 30;
@@ -71,9 +72,7 @@ const phaseMovementPhase: (world: World) => void = phaseMovement;
 const phaseEconomy: (world: World) => void = phaseEconomyImpl;
 
 /** T11: recompute per-faction fog-of-war visibility. */
-function phaseFog(_world: World): void {
-  // no-op stub — replaced by T11.
-}
+const phaseFog: (world: World) => void = phaseFogImpl;
 
 /**
  * Removes every entity whose hp has dropped to 0 or below, reversing its
