@@ -32,6 +32,7 @@ import { phaseMovement } from "./movement.js";
 import { phaseCombat } from "./combat.js";
 import { phaseEconomy as phaseEconomyImpl } from "./economy.js";
 import { phaseFog as phaseFogImpl } from "./fog.js";
+import { SpatialHash } from "./spatial.js";
 
 /** Fixed simulation rate in ticks per second (decoupled from render FPS). */
 export const SIM_HZ = 30;
@@ -51,6 +52,22 @@ export type SimPhase = (world: World) => void;
 // `cleanup` is the one phase implemented here, since dead-entity removal is a
 // cross-cutting invariant the whole simulation relies on.
 // ---------------------------------------------------------------------------
+
+/**
+ * Rebuilds the spatial hash over current unit positions. Runs as the very
+ * first phase of each tick so both movement (separation) and combat
+ * (auto-acquire) see a consistent, up-to-date hash. The hash lives on the
+ * world (not module state), so two worlds stepped interleaved never share it.
+ *
+ * If `world.spatial` is undefined (hand-built test worlds that omit it),
+ * this phase is a no-op — callers fall back to brute-force scans.
+ */
+function phaseSpatialRebuild(world: World): void {
+  if (world.spatial === undefined) {
+    world.spatial = new SpatialHash(4);
+  }
+  world.spatial.rebuild(world.units);
+}
 
 /** T16: AI player issues / revises orders for its faction. */
 function phaseAi(_world: World): void {
@@ -111,6 +128,7 @@ function phaseCleanup(world: World): void {
  * can introspect the active phase set.
  */
 export const SIM_PHASES: SimPhase[] = [
+  phaseSpatialRebuild,
   phaseAi,
   phaseOrders,
   phaseMovementPhase,

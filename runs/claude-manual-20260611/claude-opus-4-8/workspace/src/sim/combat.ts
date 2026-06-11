@@ -198,16 +198,21 @@ function spawnProjectile(
 // ---------------------------------------------------------------------------
 
 /**
- * Brute-force scan for the nearest hostile entity (unit or fully-built
+ * Returns the EntityId of the nearest hostile entity (unit or fully-built
  * building) within `sightRadius` tiles of `pos` and belonging to the enemy
- * faction.  Returns the entity id, or null if nothing is in sight.
+ * faction, or null if nothing is in sight.
  *
- * Iteration order: all units (ascending EntityId), then all buildings
- * (ascending EntityId).  Ties broken by this stable order, so the result is
- * deterministic.
+ * Unit scan uses `world.spatial` (the uniform-grid spatial hash rebuilt at the
+ * start of each tick) when present, giving O(local) performance. The spatial
+ * hash `queryRadius` returns EntityIds in ascending numeric order, matching
+ * the previous brute-force ordering so the result is identical.
  *
- * T12 will swap the inner scan for a spatial hash without changing this
- * signature.
+ * Buildings are not indexed in the spatial hash (they are static and few), so
+ * they are still scanned in ascending EntityId order — O(b) where b = building
+ * count (typically tens, not hundreds).
+ *
+ * Falls back to a full brute-force scan when `world.spatial` is absent (e.g.
+ * in hand-built test worlds).
  */
 function autoAcquire(
   world: World,
@@ -220,22 +225,41 @@ function autoAcquire(
   let bestId: EntityId | null = null;
   let bestDist2 = Infinity;
 
-  // Scan units in ascending EntityId order.
-  const unitIds = [...world.units.keys()].sort((a, b) => a - b);
-  for (const id of unitIds) {
-    const u = world.units.get(id)!;
-    if (u.owner !== hostileFaction) continue;
-    if (u.hp <= 0) continue; // being cleaned up this tick
-    const dx = u.pos.x - pos.x;
-    const dy = u.pos.y - pos.y;
-    const d2 = dx * dx + dy * dy;
-    if (d2 <= r2 && d2 < bestDist2) {
-      bestDist2 = d2;
-      bestId = id;
+  // --- Unit scan (spatial hash when available, brute-force fallback) ---
+  if (world.spatial !== undefined) {
+    // queryRadius returns ids in ascending order; iterate in that order.
+    const ids = world.spatial.queryRadius(pos, sightRadius);
+    for (const id of ids) {
+      const u = world.units.get(id);
+      if (u === undefined) continue;
+      if (u.owner !== hostileFaction) continue;
+      if (u.hp <= 0) continue;
+      const dx = u.pos.x - pos.x;
+      const dy = u.pos.y - pos.y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < bestDist2) {
+        bestDist2 = d2;
+        bestId = id;
+      }
+    }
+  } else {
+    // Brute-force fallback: scan in ascending EntityId order.
+    const unitIds = [...world.units.keys()].sort((a, b) => a - b);
+    for (const id of unitIds) {
+      const u = world.units.get(id)!;
+      if (u.owner !== hostileFaction) continue;
+      if (u.hp <= 0) continue;
+      const dx = u.pos.x - pos.x;
+      const dy = u.pos.y - pos.y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 <= r2 && d2 < bestDist2) {
+        bestDist2 = d2;
+        bestId = id;
+      }
     }
   }
 
-  // Scan buildings in ascending EntityId order.
+  // --- Building scan (brute-force; buildings are few and static) ---
   const buildingIds = [...world.buildings.keys()].sort((a, b) => a - b);
   for (const id of buildingIds) {
     const b = world.buildings.get(id)!;

@@ -28,6 +28,7 @@ import { idle } from "./orders.js";
 import type { Building, Footprint, Unit, Projectile } from "./entity.js";
 import { createFogMap } from "./fog.js";
 import type { FogMap } from "./fog.js";
+import { SpatialHash } from "./spatial.js";
 
 // ---------------------------------------------------------------------------
 // Starting-condition constants (genre-conventional; documented for tuning)
@@ -114,6 +115,16 @@ export interface World {
    * (e.g. in unit tests that build a minimal World by hand).
    */
   fog?: FogMap;
+
+  /**
+   * Uniform-grid spatial hash over unit positions. Rebuilt once per tick
+   * (before movement and combat phases) by `stepWorld`. Optional so worlds
+   * constructed by hand in tests (without calling `createWorld`) compile
+   * without providing a `SpatialHash` — those tests call `phaseMovement` /
+   * `phaseCombat` directly, which fall back to the brute-force scan when
+   * `world.spatial` is undefined.
+   */
+  spatial?: SpatialHash;
 }
 
 // ---------------------------------------------------------------------------
@@ -441,6 +452,7 @@ export function createWorld(
     mapReport: report,
     nextEntityId: 1,
     fog: createFogMap(width, height),
+    spatial: new SpatialHash(4),
     nextId(): EntityId {
       return makeEntityId(this.nextEntityId++);
     },

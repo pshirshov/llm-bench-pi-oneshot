@@ -157,7 +157,7 @@ const TRANSIT_PROGRESS_EPS = 0.03;
 const TRANSIT_STALL_TICKS_TO_REPATH = 15;
 
 // ---------------------------------------------------------------------------
-// Neighbour query — T12 replaces the body with a spatial hash, keep signature.
+// Neighbour query — backed by the spatial hash when available (T12).
 // ---------------------------------------------------------------------------
 
 /**
@@ -165,10 +165,21 @@ const TRANSIT_STALL_TICKS_TO_REPATH = 15;
  * tiles of `pos`, EXCLUDING the unit at `pos` itself (matched by identity via
  * the caller's own unit reference in the separation pass).
  *
- * Brute-force O(n) scan; T12 swaps this for a spatial hash without changing
- * the call sites.
+ * Uses `world.spatial` (the uniform-grid spatial hash, rebuilt at the start of
+ * each tick) when present, giving O(local) performance instead of O(n).
+ * Falls back to a brute-force scan when the hash is unavailable (e.g.
+ * hand-built test worlds that do not call `createWorld`).
+ *
+ * Results are returned in ascending EntityId order (the spatial hash
+ * `queryRadius` guarantees this), matching the previous brute-force ordering
+ * so all downstream behaviour is identical.
  */
 function neighborsWithin(world: World, pos: PointF, r: number): Unit[] {
+  if (world.spatial !== undefined) {
+    const ids = world.spatial.queryRadius(pos, r);
+    return ids.map((id) => world.units.get(id)).filter((u): u is Unit => u !== undefined);
+  }
+  // Brute-force fallback (no spatial hash on this world).
   const r2 = r * r;
   const result: Unit[] = [];
   for (const other of world.units.values()) {
@@ -178,6 +189,8 @@ function neighborsWithin(world: World, pos: PointF, r: number): Unit[] {
       result.push(other);
     }
   }
+  // Sort by EntityId to match spatial hash ordering.
+  result.sort((a, b) => a.id - b.id);
   return result;
 }
 
