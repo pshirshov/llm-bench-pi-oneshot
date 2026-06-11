@@ -28,6 +28,7 @@
 
 import { getBuildingStats, getUnitStats } from "./stats.js";
 import type { World } from "./world.js";
+import { phaseMovement } from "./movement.js";
 
 /** Fixed simulation rate in ticks per second (decoupled from render FPS). */
 export const SIM_HZ = 30;
@@ -59,9 +60,8 @@ function phaseOrders(_world: World): void {
 }
 
 /** T8: integrate unit positions along their A* paths and resolve avoidance. */
-function phaseMovement(_world: World): void {
-  // no-op stub — replaced by T8.
-}
+// Imported from movement.ts; aliased here so SIM_PHASES references remain identical.
+const phaseMovementPhase: (world: World) => void = phaseMovement;
 
 /** T9: target acquisition, attack resolution, projectile integration. */
 function phaseCombat(_world: World): void {
@@ -117,7 +117,7 @@ function phaseCleanup(world: World): void {
 export const SIM_PHASES: SimPhase[] = [
   phaseAi,
   phaseOrders,
-  phaseMovement,
+  phaseMovementPhase,
   phaseCombat,
   phaseEconomy,
   phaseFog,

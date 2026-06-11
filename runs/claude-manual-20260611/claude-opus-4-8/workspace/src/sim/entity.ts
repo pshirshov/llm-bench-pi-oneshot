@@ -90,6 +90,83 @@ export interface Unit {
   path?: Vec2[];
 
   /**
+   * Resolved arrival reservation for a `move` order, owned by the movement
+   * phase. When several units are ordered to the SAME goal tile, only one can
+   * stand on it; the movement phase assigns each unit a DISTINCT nearby free
+   * tile (`slot`) — found by an outward ring search from the shared goal — and
+   * the unit travels to and settles on its own slot, so a group packs into a
+   * bounded cluster instead of being shoved into an ever-growing line. `goal`
+   * records which goal tile produced the slot, so a re-issued move order to a
+   * different tile invalidates the reservation. Undefined ⇒ no reservation yet
+   * (assigned lazily, cleared when the order stops referencing that goal).
+   */
+  arrival?: { readonly goal: Vec2; readonly slot: Vec2 };
+
+  /**
+   * Consecutive ticks this `move` unit has failed to make PROGRESS TOWARD ITS
+   * SLOT (its centre-to-slot distance has not strictly decreased by more than a
+   * small epsilon) while inside the arrival disk — movement-phase scratch state.
+   * Keyed on slot-distance, NOT instantaneous speed, so it catches BOTH a unit
+   * jammed motionless against the settled cluster AND one trapped in a
+   * separation-vs-slot-seek LIMIT CYCLE (orbiting its slot at non-zero speed but
+   * never closing on it). A unit is force-settled in place once the count crosses
+   * a threshold. Reset to 0 whenever the unit's slot-distance improves or it stops
+   * being a travelling `move` unit. Paired with `slotBestDist`.
+   */
+  stallTicks?: number;
+
+  /**
+   * The smallest centre-to-slot distance this `move` unit has achieved so far on
+   * its current approach — movement-phase scratch state paired with `stallTicks`.
+   * Used by the progress-based force-settle backstop: a tick that strictly beats
+   * this value (by > ε) counts as progress and resets the stall counter; a tick
+   * that does not (orbit or jam) advances it. Cleared when the unit settles or
+   * re-targets so the next approach starts fresh.
+   */
+  slotBestDist?: number;
+
+  /**
+   * The integer waypoint (`path[0]`) whose approach-progress is currently being
+   * tracked for the IN-TRANSIT re-path backstop, paired with `wpBestDist` /
+   * `wpStallTicks`. Movement-phase scratch state. When the head waypoint changes
+   * (the unit popped one — i.e. it advanced, which IS progress) the progress
+   * window resets. Distinct from the slot/goal tracking (`slotBestDist`): this
+   * detects a unit physically WALLED mid-route by a settled (pinned) cluster —
+   * whose tile bodies A* ignores — so it can be re-pathed AROUND the cluster,
+   * whereas `slotBestDist` detects a unit jammed AT its own arrival cluster (to be
+   * settled in place). Undefined ⇒ no waypoint currently tracked.
+   */
+  wpTarget?: Vec2;
+
+  /**
+   * Smallest centre-to-current-waypoint distance achieved since `wpTarget` was
+   * last (re)set — movement-phase scratch state paired with `wpTarget` /
+   * `wpStallTicks`. A tick that strictly beats it (by > ε) is transit progress and
+   * resets `wpStallTicks`; any other tick advances it.
+   */
+  wpBestDist?: number;
+
+  /**
+   * Consecutive ticks this in-transit `move` unit has failed to make progress
+   * toward its current head waypoint (`wpTarget`) — movement-phase scratch state.
+   * Once it crosses a threshold the unit is RE-PATHED with A* treating currently
+   * PINNED tiles as blocked, so it routes around a settled cluster its cached
+   * (unit-blind) A* path runs straight through. Reset to 0 on transit progress,
+   * on a waypoint change, or when the unit stops being an in-transit `move` unit.
+   */
+  wpStallTicks?: number;
+
+  /**
+   * Set once this `move` unit has SETTLED on its arrival slot (snapped exactly to
+   * the slot centre and idled). A pinned unit is a true fixed point: it is NEVER
+   * displaced by the separation pass again (it only CONTRIBUTES a push to
+   * in-transit neighbours), so an arrived group holds exactly-fixed positions
+   * with max per-tick movement == 0 — no orbit, no oscillation. Cleared by a
+   * fresh `move` order (re-target) so the unit re-paths to the new goal.
+   */
+  pinned?: boolean;
+
+  /**
    * The entity this unit is currently engaging / harvesting / repairing, when
    * its order references another entity. Cached so the relevant phase need not
    * re-read the order each tick.
