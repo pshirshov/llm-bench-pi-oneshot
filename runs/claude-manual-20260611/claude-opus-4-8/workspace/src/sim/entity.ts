@@ -222,6 +222,15 @@ export interface Building {
    * at the building exit.
    */
   rallyPoint?: Vec2;
+
+  /**
+   * Remaining attack cooldown ticks for combat-capable buildings (guard towers).
+   * Undefined / 0 ⇒ ready to fire. Stored on the entity so two different world
+   * instances sharing the same EntityId counter never cross-contaminate cooldown
+   * state (a module-level side-table keyed by EntityId would break determinism
+   * for same-seed worlds stepped interleaved).
+   */
+  attackCooldown?: number;
 }
 
 // ---------------------------------------------------------------------------
