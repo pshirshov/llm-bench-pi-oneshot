@@ -30,6 +30,7 @@ import { getBuildingStats, getUnitStats } from "./stats.js";
 import type { World } from "./world.js";
 import { phaseMovement } from "./movement.js";
 import { phaseCombat } from "./combat.js";
+import { phaseEconomy as phaseEconomyImpl } from "./economy.js";
 
 /** Fixed simulation rate in ticks per second (decoupled from render FPS). */
 export const SIM_HZ = 30;
@@ -67,9 +68,7 @@ const phaseMovementPhase: (world: World) => void = phaseMovement;
 // phaseCombat is imported from ./combat.ts (T9 implementation).
 
 /** T10: harvesting, construction progress, training, supply accounting. */
-function phaseEconomy(_world: World): void {
-  // no-op stub — replaced by T10.
-}
+const phaseEconomy: (world: World) => void = phaseEconomyImpl;
 
 /** T11: recompute per-faction fog-of-war visibility. */
 function phaseFog(_world: World): void {

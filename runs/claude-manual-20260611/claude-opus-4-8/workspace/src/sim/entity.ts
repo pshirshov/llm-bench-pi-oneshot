@@ -27,6 +27,45 @@ import type {
 import type { Order } from "./orders.js";
 
 // ---------------------------------------------------------------------------
+// Worker scratch state types (defined here to avoid circular imports between
+// entity.ts and economy.ts; economy.ts imports these from entity.ts).
+// ---------------------------------------------------------------------------
+
+/** Phase of the worker harvest cycle. */
+export type HarvestPhase = "approach" | "gather" | "return" | "deposit";
+
+/**
+ * Per-worker scratch state for the harvest cycle.  Stored on the Unit entity
+ * so two worlds with the same EntityId counter cannot cross-contaminate state
+ * (the module-level Map pattern would be keyed by EntityId and collide across
+ * worlds stepped interleaved).
+ */
+export interface WorkerHarvestState {
+  /** Current phase of the harvest cycle. */
+  phase: HarvestPhase;
+  /** Tile being harvested (gold mine or forest). */
+  resourceTile: Vec2;
+  /** Gather tick counter (increments during "gather" phase). */
+  gatherTicks: number;
+  /**
+   * Fractional wood debt from repair (accumulates sub-integer wood costs).
+   * Re-used for repair workers as a cost accumulator between "full-wood" debits.
+   */
+  repairWoodDebt: number;
+}
+
+/**
+ * Per-worker scratch state for the construction cycle.  Stored on the Unit
+ * entity for the same determinism reason as WorkerHarvestState.
+ */
+export interface WorkerBuildState {
+  /** The building under construction (EntityId). */
+  buildingId: EntityId;
+  /** True once the cost has been deducted and the building placed. */
+  started: boolean;
+}
+
+// ---------------------------------------------------------------------------
 // Shared value shapes
 // ---------------------------------------------------------------------------
 
@@ -178,6 +217,20 @@ export interface Unit {
 
   /** Resource currently carried by a worker, if any. */
   carrying?: CarriedResource;
+
+  /**
+   * Harvest-cycle scratch state for worker units.  Stored on the entity rather
+   * than in a module-level Map so same-EntityId workers in different worlds
+   * (e.g. two same-seed worlds stepped interleaved) cannot share or overwrite
+   * each other's state.  GC'd automatically when the unit is removed.
+   */
+  harvestState?: WorkerHarvestState;
+
+  /**
+   * Construction-cycle scratch state for worker units.  Same rationale as
+   * `harvestState` — stored on the entity, not in a module-level side table.
+   */
+  buildState?: WorkerBuildState;
 }
 
 // ---------------------------------------------------------------------------
@@ -216,6 +269,14 @@ export interface Building {
 
   /** FIFO queue of units being trained (T10 advances the head each tick). */
   trainQueue: TrainJob[];
+
+  /**
+   * The standing order for this building.  Currently only `train` and `stop`
+   * are meaningful; the economy phase (T10) reads this to enqueue a new
+   * training job, then clears it to `stop` so external code can re-issue.
+   * Undefined ⇒ idle (equivalent to stop).
+   */
+  order?: Order;
 
   /**
    * Where freshly-trained units walk to after spawning. Undefined ⇒ they idle
