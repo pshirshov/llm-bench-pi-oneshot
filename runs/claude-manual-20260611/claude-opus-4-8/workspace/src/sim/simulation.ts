@@ -32,13 +32,15 @@ import { phaseMovement } from "./movement.js";
 import { phaseCombat } from "./combat.js";
 import { phaseEconomy as phaseEconomyImpl } from "./economy.js";
 import { phaseFog as phaseFogImpl } from "./fog.js";
+import { phaseAi as phaseAiImpl } from "./ai.js";
 import { SpatialHash } from "./spatial.js";
 
-/** Fixed simulation rate in ticks per second (decoupled from render FPS). */
-export const SIM_HZ = 30;
-
-/** Seconds of simulated time per tick. */
-export const SECONDS_PER_TICK = 1 / SIM_HZ;
+// SIM_HZ / SECONDS_PER_TICK live in the leaf module `tick.ts` (no sim-graph
+// imports) and are re-exported here so existing `from "./simulation.js"` import
+// sites keep working. Defining them here would re-introduce a circular-import
+// init-order hazard: phase modules (economy/ai/movement) imported above need
+// SIM_HZ at THEIR module-init, before this module's body finished — see tick.ts.
+export { SIM_HZ, SECONDS_PER_TICK } from "./tick.js";
 
 /** One sub-system of a tick. Runs in `SIM_PHASES` order; mutates only `world`. */
 export type SimPhase = (world: World) => void;
@@ -70,9 +72,8 @@ function phaseSpatialRebuild(world: World): void {
 }
 
 /** T16: AI player issues / revises orders for its faction. */
-function phaseAi(_world: World): void {
-  // no-op stub — replaced by T16.
-}
+// Imported from ai.ts; aliased here so SIM_PHASES references remain identical.
+const phaseAi: (world: World) => void = phaseAiImpl;
 
 /** T8/T9: resolve each unit's standing order into concrete per-tick intents. */
 function phaseOrders(_world: World): void {

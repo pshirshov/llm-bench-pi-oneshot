@@ -211,12 +211,20 @@ describe("stepWorld", () => {
     }
     expect(world.tick).toBe(STEPS);
 
-    // With only no-op phases (besides cleanup), no entity should have died, so
-    // the opening forces are intact after 300 ticks.
+    // No combat reaches either base within 300 ticks (~10 s), so no opening unit
+    // dies and both Town Halls survive. The PLAYER faction (no human input, and
+    // the AI never touches it) keeps EXACTLY its starting workers; the AI-driven
+    // faction (the player's opponent) may have TRAINED additional workers via the
+    // now-active `ai` phase — its worker count therefore only grows, never shrinks.
+    const aiFaction: Faction = world.playerFaction === "human" ? "orc" : "human";
     for (const faction of FACTIONS) {
-      expect(unitsOf(world, faction).filter((u) => u.kind === "worker")).toHaveLength(
-        STARTING_WORKERS,
-      );
+      const workers = unitsOf(world, faction).filter((u) => u.kind === "worker").length;
+      if (faction === world.playerFaction) {
+        expect(workers).toBe(STARTING_WORKERS);
+      } else {
+        expect(faction).toBe(aiFaction);
+        expect(workers).toBeGreaterThanOrEqual(STARTING_WORKERS);
+      }
       expect(buildingsOf(world, faction).filter((b) => b.kind === "townHall")).toHaveLength(1);
     }
   });

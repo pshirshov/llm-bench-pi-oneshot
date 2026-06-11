@@ -125,6 +125,18 @@ export interface World {
    * `world.spatial` is undefined.
    */
   spatial?: SpatialHash;
+
+  /**
+   * Per-faction scripted-AI memory (think timer, build-order progress, wave
+   * state, one-time difficulty bonuses). Populated LAZILY by the `ai` phase
+   * (`phaseAi` in ai.ts) the first time it runs for a faction — stored on the
+   * World, never in module-level state, so two same-seed worlds stepped
+   * interleaved keep bit-identical AI state. Optional and untyped here (a
+   * `Record<Faction, unknown>`) so this aggregate has no compile-time
+   * dependency on ai.ts; the AI phase narrows it to its own `AIMemory` type.
+   * Keyed by Faction; only the AI-controlled (non-player) faction gets an entry.
+   */
+  ai?: Partial<Record<Faction, unknown>>;
 }
 
 // ---------------------------------------------------------------------------

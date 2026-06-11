@@ -46,7 +46,7 @@ import type { Vec2 } from "../core/vec.js";
 import { astar } from "./astar.js";
 import { getUnitStats } from "./stats.js";
 import { idle } from "./orders.js";
-import { SIM_HZ } from "./simulation.js";
+import { SIM_HZ } from "./tick.js";
 
 // ---------------------------------------------------------------------------
 // Tuning constants

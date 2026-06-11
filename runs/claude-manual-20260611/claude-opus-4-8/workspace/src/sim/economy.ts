@@ -69,7 +69,7 @@ import {
 } from "./stats.js";
 import { idle } from "./orders.js";
 import { addBuilding, addUnit } from "./world.js";
-import { SIM_HZ } from "./simulation.js";
+import { SIM_HZ } from "./tick.js";
 import { tilesForFootprint } from "./gamemap.js";
 
 // ---------------------------------------------------------------------------
