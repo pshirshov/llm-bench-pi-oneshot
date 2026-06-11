@@ -1,9 +1,0 @@
-{
-  "prompt": "000-smoke",
-  "provider": "ollama-cloud",
-  "model": "minimax-m3",
-  "effort": "xhigh",
-  "exit_code": -15,
-  "status": "timeout",
-  "duration_seconds": 600
-}

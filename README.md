@@ -26,7 +26,10 @@ bench/
 │       ├── checklist.md       validation checklist (automated / code-review / manual)
 │       └── meta.json          { id, title, timeout_seconds }
 ├── scripts/
-│   └── run_bench.py           parallel runner (prompts × models matrix; Python 3.11+ stdlib)
+│   ├── run_bench.py           parallel runner (prompts × models matrix; Python 3.11+ stdlib)
+│   └── build_site.py          builds run artifacts into a static site + index.html
+├── .github/workflows/
+│   └── publish-site.yml       builds + deploys the site to GitHub Pages
 ├── runs/                      (gitignored) one directory per run
 │   └── <run-id>/
 │       ├── manifest.json      run id, started_at, prompts, models
@@ -62,6 +65,14 @@ bench/
    list per cell.
 4. **Validate (manual)**: the user runs each surviving artifact (`npm run dev` in the
    workspace), checks the "Manual" items, and records verdicts in `results.md`.
+5. **Publish**: `scripts/build_site.py [run-id ...]` builds every produced project
+   (`vite build --base=./`, bypassing `tsc` so a type error still yields a runnable
+   bundle), copies each `dist/` into `site/<run>/<prompt>/<model>/`, and writes
+   `site/index.html` linking every playable artifact (grouped by run, with the run's
+   `results.md` alongside). With no run id it builds every run under `runs/`.
+   The `publish-site.yml` workflow runs this on pushes to `main` that touch `runs/`
+   and deploys `site/` to GitHub Pages; partial build failures are listed in the
+   index rather than blocking the deploy.
 
 ## Scoring
 

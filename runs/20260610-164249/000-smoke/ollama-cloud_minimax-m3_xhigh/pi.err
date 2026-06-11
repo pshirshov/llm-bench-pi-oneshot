@@ -1,2 +1,0 @@
-warning: Git tree '/home/pavel/work/safe/flakes/cq/bench' is dirty
-error (ignored): SQLite database '/home/pavel/.cache/nix/eval-cache-v6/6aed4afef6aeefcba25b9a260068690122ce2cf204036420abe445a64499b853.sqlite' is busy

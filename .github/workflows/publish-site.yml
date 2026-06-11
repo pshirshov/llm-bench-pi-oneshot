@@ -1,0 +1,64 @@
+name: Publish run artifacts to GitHub Pages
+
+# Builds the projects produced by benchmark runs into a static site
+# (scripts/build_site.py) and deploys it to GitHub Pages.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "runs/**"
+      - "scripts/build_site.py"
+      - ".github/workflows/publish-site.yml"
+  workflow_dispatch:
+    inputs:
+      runs:
+        description: "Space-separated run ids to build (empty = every run under runs/)"
+        required: false
+        default: ""
+
+# Allow the workflow to publish to Pages; one concurrent deploy at a time.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Build site from run artifacts
+        # Partial build failures (a model that ships a broken project) must not block
+        # publishing the artifacts that did build — build_site.py still emits index.html
+        # marking the failures, and exits non-zero, which we tolerate here.
+        continue-on-error: true
+        run: python3 scripts/build_site.py ${{ github.event.inputs.runs }} --output site
+
+      - name: Fail if nothing was built
+        run: test -f site/index.html
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
