@@ -22,12 +22,14 @@
 
 import { GameSession } from "./game/session.js";
 import type { SessionViewport } from "./game/session.js";
-import { render } from "./render/renderer.js";
+import { render, drawPlacementGhost } from "./render/renderer.js";
 import { renderHud } from "./ui/hud.js";
 import { renderMinimap } from "./render/minimap.js";
 import type { PixelRect } from "./render/minimap.js";
 import { bindInput } from "./input/input.js";
+import { screenToWorldX, screenToWorldY } from "./render/camera.js";
 import { seedFromUrl } from "./core/rng.js";
+import type { Vec2 } from "./core/vec.js";
 import type { Faction } from "./game/types.js";
 import {
   CAMPAIGN_LEVELS,
@@ -87,6 +89,12 @@ interface App {
   unbindInput: (() => void) | null;
   /** Timestamp (ms) of the previous rAF tick, for real-dt computation. */
   lastFrameMs: number | null;
+  /**
+   * Integer world tile under the cursor, tracked from mousemove for the
+   * building-placement ghost preview. Null until the first mousemove over a live
+   * match (or outside `match`/`result`).
+   */
+  cursorTile: Vec2 | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -114,10 +122,16 @@ function main(): void {
     levelIndex: -1,
     unbindInput: null,
     lastFrameMs: null,
+    cursorTile: null,
   };
 
   sizeCanvasToWindow(app);
   window.addEventListener("resize", () => onResize(app));
+
+  // Track the cursor tile for the building-placement ghost preview. This is a
+  // SEPARATE listener from the input layer's binding (which handles selection /
+  // orders); main.ts owns the cursor-tile state and feeds it to the renderer.
+  canvas.addEventListener("mousemove", (e: MouseEvent) => onCursorMove(app, e));
 
   goToMenu(app);
 
@@ -148,6 +162,24 @@ function onResize(app: App): void {
     camera.viewportH = app.canvas.height;
     session.rebuildHudLayout();
   }
+}
+
+/**
+ * Updates `app.cursorTile` (the integer world tile under the cursor) from a
+ * canvas mousemove, using the live session's camera for the screen→world
+ * transform. A no-op outside a live match (no session ⇒ nothing to preview).
+ */
+function onCursorMove(app: App, e: MouseEvent): void {
+  const session = app.session;
+  if (session === null) {
+    app.cursorTile = null;
+    return;
+  }
+  const camera = session.inputContext().camera;
+  app.cursorTile = {
+    x: Math.floor(screenToWorldX(camera, e.offsetX)),
+    y: Math.floor(screenToWorldY(camera, e.offsetY)),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -229,13 +261,17 @@ function startMatch(app: App, levelIndex: number): void {
 
   // The session seed is the level's DERIVED per-level seed, so the map the
   // player sees matches `levelMap(campaignSeed, levelIndex)` exactly, and is
-  // reproducible from (campaign seed, level number).
+  // reproducible from (campaign seed, level number). The level's declared
+  // width/height are forwarded so the match map uses the campaign level's size
+  // (32/48/64/80/96) instead of createWorld's 48×48 default.
   const session = new GameSession(
     levelSeed(app.campaignSeed, levelIndex),
     levelIndex,
     app.faction,
     level.aiDifficulty,
     viewport,
+    level.width,
+    level.height,
   );
 
   app.session = session;
@@ -255,6 +291,7 @@ function teardownMatch(app: App): void {
   app.session = null;
   app.levelIndex = -1;
   app.lastFrameMs = null;
+  app.cursorTile = null;
 }
 
 function goToResult(app: App, result: "victory" | "defeat", levelIndex: number): void {
@@ -324,6 +361,9 @@ function renderMatch(app: App, session: GameSession): void {
   ctx.fillRect(0, 0, app.canvas.width, app.canvas.height);
 
   render(ctx, world, camera, faction, selection);
+  // Building-placement ghost (over the world, under the HUD): a green/red
+  // footprint preview at the cursor tile while in build mode.
+  drawPlacementGhost(ctx, world, camera, faction, inputCtx.placement, app.cursorTile);
   renderHud(ctx, world, inputCtx.hudLayout, faction, selection, selectedBuilding);
   renderMinimap(ctx, world, camera, faction, minimapRect(app));
 }

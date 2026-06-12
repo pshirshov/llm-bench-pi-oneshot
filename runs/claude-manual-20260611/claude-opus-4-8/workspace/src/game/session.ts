@@ -28,7 +28,7 @@
  * never desync. It is fully HEADLESS-testable.
  */
 
-import { createWorld } from "../sim/world.js";
+import { createWorld, DEFAULT_MAP_WIDTH, DEFAULT_MAP_HEIGHT } from "../sim/world.js";
 import type { World, AiDifficulty } from "../sim/world.js";
 import { stepWorld, SIM_HZ } from "../sim/simulation.js";
 import { createCamera } from "../render/camera.js";
@@ -99,8 +99,10 @@ export interface SessionViewport {
 
 /**
  * Owns one match. Construct with the same `(seed, levelIndex, playerFaction,
- * aiDifficulty)` arguments as `createWorld`; drive with `frame(dt)` each render
- * tick; read `world`, `inputContext()`, and `result` for rendering and HUD.
+ * aiDifficulty)` arguments as `createWorld`, plus the level's map `width`/`height`
+ * (so the match map matches the campaign level's declared size rather than the
+ * 48×48 default); drive with `frame(dt)` each render tick; read `world`,
+ * `inputContext()`, and `result` for rendering and HUD.
  */
 export class GameSession {
   /** The live simulation state. `stepWorld` mutates only this. */
@@ -146,8 +148,10 @@ export class GameSession {
       viewportW: DEFAULT_VIEWPORT_W,
       viewportH: DEFAULT_VIEWPORT_H,
     },
+    width: number = DEFAULT_MAP_WIDTH,
+    height: number = DEFAULT_MAP_HEIGHT,
   ) {
-    this.world = createWorld(seed, levelIndex, playerFaction, aiDifficulty);
+    this.world = createWorld(seed, levelIndex, playerFaction, aiDifficulty, width, height);
     this.playerFaction = playerFaction;
     this.enemyFaction = playerFaction === "human" ? "orc" : "human";
 

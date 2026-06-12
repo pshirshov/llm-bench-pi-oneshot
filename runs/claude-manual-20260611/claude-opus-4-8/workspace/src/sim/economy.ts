@@ -299,6 +299,40 @@ function nearestForestTile(world: World, pos: { x: number; y: number }): Vec2 | 
 }
 
 /**
+ * True iff `(x, y)` is currently a harvestable resource tile: a gold mine with
+ * gold still remaining, or a forest tile. Mirrors the order-dispatch predicate
+ * the input layer uses (`isHarvestTile`) but additionally requires a live mine.
+ */
+function isLiveResourceTile(world: World, x: number, y: number): boolean {
+  if (!world.map.inBounds(x, y)) return false;
+  const kind = world.map.tileAt(x, y);
+  if (kind === "forest") return true;
+  if (kind === "goldMine") return world.map.goldAt(x, y) > 0;
+  return false;
+}
+
+/**
+ * Decodes a `harvest` order's `targetId` (encoded by the input layer as
+ * `y * map.width + x`, see input.ts `resourceEntityId`) back to the resource
+ * tile it names, IFF that tile is still a live resource (gold mine with gold
+ * remaining, or forest). Returns null when the id does not decode to a live
+ * resource tile — the caller then falls back to nearest-resource selection.
+ *
+ * The encoding is the row-major flat index, so `x = id % width`, `y = id / width`
+ * (integer division). A negative or non-integer id, or one outside the grid,
+ * yields null. Determinism is preserved: this is a pure function of the order id
+ * and the current map state.
+ */
+function harvestTargetTile(world: World, targetId: number): Vec2 | null {
+  if (!Number.isInteger(targetId) || targetId < 0) return null;
+  const width = world.map.width;
+  const x = targetId % width;
+  const y = Math.floor(targetId / width);
+  if (!isLiveResourceTile(world, x, y)) return null;
+  return vec(x, y);
+}
+
+/**
  * Nearest live gold mine tile to `pos`, or null if none in range.
  */
 function nearestGoldMineTile(world: World, pos: { x: number; y: number }): Vec2 | null {
@@ -534,17 +568,23 @@ function tickHarvest(world: World, unit: Unit): void {
   let state = unit.harvestState;
 
   if (state === undefined) {
-    // Bootstrap: find nearest resource and start approach.
-    const goldTile = nearestGoldMineTile(world, unit.pos);
-    const forestTile = nearestForestTile(world, unit.pos);
+    // Bootstrap: honor the order's explicit target tile (the resource the player
+    // right-clicked, encoded as y*width+x) when it still names a live resource;
+    // otherwise fall back to the nearest resource. This makes a harvest order go
+    // to the CLICKED resource rather than always the nearest one (D2).
+    let resourceTile: Vec2 | null = harvestTargetTile(world, o.targetId);
 
-    let resourceTile: Vec2 | null = null;
-    if (goldTile !== null && forestTile !== null) {
-      const goldDist = Math.max(Math.abs(goldTile.x - Math.floor(unit.pos.x)), Math.abs(goldTile.y - Math.floor(unit.pos.y)));
-      const forestDist = Math.max(Math.abs(forestTile.x - Math.floor(unit.pos.x)), Math.abs(forestTile.y - Math.floor(unit.pos.y)));
-      resourceTile = goldDist <= forestDist ? goldTile : forestTile;
-    } else {
-      resourceTile = goldTile ?? forestTile;
+    if (resourceTile === null) {
+      const goldTile = nearestGoldMineTile(world, unit.pos);
+      const forestTile = nearestForestTile(world, unit.pos);
+
+      if (goldTile !== null && forestTile !== null) {
+        const goldDist = Math.max(Math.abs(goldTile.x - Math.floor(unit.pos.x)), Math.abs(goldTile.y - Math.floor(unit.pos.y)));
+        const forestDist = Math.max(Math.abs(forestTile.x - Math.floor(unit.pos.x)), Math.abs(forestTile.y - Math.floor(unit.pos.y)));
+        resourceTile = goldDist <= forestDist ? goldTile : forestTile;
+      } else {
+        resourceTile = goldTile ?? forestTile;
+      }
     }
 
     if (resourceTile === null) {

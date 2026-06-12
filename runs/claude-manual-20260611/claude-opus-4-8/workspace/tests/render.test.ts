@@ -14,15 +14,18 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { createWorld } from "../src/sim/world.js";
 import type { World } from "../src/sim/world.js";
 import { stepWorld } from "../src/sim/simulation.js";
-import { render } from "../src/render/renderer.js";
+import { render, drawPlacementGhost } from "../src/render/renderer.js";
 import { renderMinimap } from "../src/render/minimap.js";
 import type { PixelRect } from "../src/render/minimap.js";
 import { createCamera } from "../src/render/camera.js";
 import type { CanvasCtx } from "../src/render/canvas-types.js";
 import type { FogMap } from "../src/sim/fog.js";
 import { makeEntityId } from "../src/game/types.js";
+import type { BuildingKind } from "../src/game/types.js";
 import { idle } from "../src/sim/orders.js";
 import type { Unit } from "../src/sim/entity.js";
+import { getBuildingStats } from "../src/sim/stats.js";
+import { vec } from "../src/core/vec.js";
 
 // ---------------------------------------------------------------------------
 // Canvas stub
@@ -332,5 +335,98 @@ describe("render: fog gate — enemy unit on non-Visible tile is not rendered", 
     const ORC_COLOR = "#8b0000";
     const orcDotDrawn = calls.some(c => c.op === "fill" && c.fillStyle === ORC_COLOR);
     expect(orcDotDrawn).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// (D4) Building-placement ghost — green where buildable, red where blocked
+// ---------------------------------------------------------------------------
+
+/** The exact ghost fills the renderer uses (kept in sync with renderer.ts). */
+const GHOST_VALID_FILL = "rgba(64,220,96,0.45)";
+const GHOST_INVALID_FILL = "rgba(220,48,48,0.45)";
+
+describe("render: building-placement ghost (D4)", () => {
+  const PLACEMENT_KIND: BuildingKind = "barracks";
+
+  function camForWorld(world: World): ReturnType<typeof createCamera> {
+    return createCamera(
+      TILE_SIZE,
+      VIEWPORT_W,
+      VIEWPORT_H,
+      world.map.width / 2,
+      world.map.height / 2,
+      world.map.width,
+      world.map.height,
+    );
+  }
+
+  /** Finds a tile whose `barracks` footprint is buildable, scanning row-major. */
+  function findBuildableTile(world: World): { x: number; y: number } {
+    const fp = getBuildingStats("human", PLACEMENT_KIND).footprint;
+    for (let y = 0; y < world.map.height; y++) {
+      for (let x = 0; x < world.map.width; x++) {
+        if (world.map.canPlaceBuilding(vec(x, y), fp)) return { x, y };
+      }
+    }
+    throw new Error("no buildable tile found on the seeded map");
+  }
+
+  it("does not throw when placement + cursor are set", () => {
+    const world = buildWorld();
+    const { ctx } = makeStub();
+    const cam = camForWorld(world);
+    const tile = findBuildableTile(world);
+    expect(() =>
+      drawPlacementGhost(ctx, world, cam, "human", { building: PLACEMENT_KIND }, tile),
+    ).not.toThrow();
+  });
+
+  it("draws a GREEN fill on a buildable cursor tile", () => {
+    const world = buildWorld();
+    const { ctx, calls } = makeStub();
+    const cam = camForWorld(world);
+    const tile = findBuildableTile(world);
+
+    drawPlacementGhost(ctx, world, cam, "human", { building: PLACEMENT_KIND }, tile);
+
+    const greenFill = calls.some(c => c.op === "fillRect" && c.fillStyle === GHOST_VALID_FILL);
+    const redFill = calls.some(c => c.op === "fillRect" && c.fillStyle === GHOST_INVALID_FILL);
+    expect(greenFill).toBe(true);
+    expect(redFill).toBe(false);
+  });
+
+  it("draws a RED fill on a blocked cursor tile (own building footprint is occupied)", () => {
+    const world = buildWorld();
+    // The player's Town Hall occupies its footprint — its top-left tile is a
+    // guaranteed-blocked cursor position for any new footprint.
+    const ownHall = [...world.buildings.values()].find(b => b.owner === "human");
+    expect(ownHall).toBeDefined();
+    const blockedTile = { x: ownHall!.tile.x, y: ownHall!.tile.y };
+    // Sanity: the footprint really is unbuildable here.
+    const fp = getBuildingStats("human", PLACEMENT_KIND).footprint;
+    expect(world.map.canPlaceBuilding(vec(blockedTile.x, blockedTile.y), fp)).toBe(false);
+
+    const { ctx, calls } = makeStub();
+    const cam = camForWorld(world);
+    drawPlacementGhost(ctx, world, cam, "human", { building: PLACEMENT_KIND }, blockedTile);
+
+    const greenFill = calls.some(c => c.op === "fillRect" && c.fillStyle === GHOST_VALID_FILL);
+    const redFill = calls.some(c => c.op === "fillRect" && c.fillStyle === GHOST_INVALID_FILL);
+    expect(redFill).toBe(true);
+    expect(greenFill).toBe(false);
+  });
+
+  it("is a no-op when placement is null or cursor tile is null", () => {
+    const world = buildWorld();
+    const cam = camForWorld(world);
+
+    const a = makeStub();
+    drawPlacementGhost(a.ctx, world, cam, "human", null, { x: 5, y: 5 });
+    expect(a.calls.filter(c => c.op === "fillRect").length).toBe(0);
+
+    const b = makeStub();
+    drawPlacementGhost(b.ctx, world, cam, "human", { building: PLACEMENT_KIND }, null);
+    expect(b.calls.filter(c => c.op === "fillRect").length).toBe(0);
   });
 });

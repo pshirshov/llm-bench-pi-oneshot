@@ -160,8 +160,11 @@ export function levelSeed(campaignSeed: number, levelIndex: number): number {
  * Deterministically generates level `levelIndex`'s playable map for the given
  * campaign seed. Uses the level's fixed dimensions and the derived per-level
  * seed; the level index is also threaded into `generateMap` so the result is
- * keyed identically to the `GameSession`/`createWorld` the match runs on (which
- * the app shell constructs with this same `levelSeed` + `levelIndex`).
+ * keyed identically to the `GameSession`/`createWorld` the match runs on. The
+ * app shell (`main.ts`) constructs that session with this same `levelSeed` +
+ * `levelIndex` AND the same `level.width`/`level.height`, so `createWorld`'s
+ * internal `generateMap(width, height, seed, levelIndex)` call matches this one
+ * exactly — the previewed map and the played map are bit-identical.
  *
  * Pure in `(campaignSeed, levelIndex)`: repeated calls return bit-identical
  * grids, starts, and reports.

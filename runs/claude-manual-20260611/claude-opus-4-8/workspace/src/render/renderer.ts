@@ -20,9 +20,11 @@ import type { Camera } from "./camera.js";
 import { worldToScreenX, worldToScreenY, visibleTileRange } from "./camera.js";
 import { isEntityVisibleTo } from "../sim/fog.js";
 import type { FogMap, FogState } from "../sim/fog.js";
-import type { Faction } from "../game/types.js";
+import type { BuildingKind, Faction } from "../game/types.js";
 import type { Building, Unit } from "../sim/entity.js";
+import { getBuildingStats } from "../sim/stats.js";
 import { TILE_COLORS } from "../wfc/tiles.js";
+import type { Vec2 } from "../core/vec.js";
 
 // ---------------------------------------------------------------------------
 // Faction colours
@@ -322,4 +324,58 @@ export function render(
     const sy = worldToScreenY(camera, proj.pos.y);
     drawProjectile(ctx, sx, sy, ts);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Building-placement ghost preview
+// ---------------------------------------------------------------------------
+
+/** Fill for a placement ghost whose footprint is buildable at the cursor tile. */
+const PLACEMENT_GHOST_VALID = "rgba(64,220,96,0.45)";
+/** Fill for a placement ghost blocked by terrain/occupancy/out-of-bounds. */
+const PLACEMENT_GHOST_INVALID = "rgba(220,48,48,0.45)";
+
+/**
+ * Draws the building-placement preview ("ghost") while the player is choosing
+ * where to put a building (`InputContext.placement` is non-null).
+ *
+ * The footprint (sized from `BUILDING_STATS` via `getBuildingStats`) is drawn as
+ * a translucent rectangle anchored at the cursor tile, tinted GREEN when
+ * `GameMap.canPlaceBuilding` accepts the footprint there and RED when it does
+ * not (blocked / occupied / off-map / on a resource tile). This realises the
+ * spec's "placement shows a validity preview and rejects blocked/occupied
+ * tiles" — the same `canPlaceBuilding` predicate the confirm-click uses, so the
+ * preview never disagrees with the actual placement rule.
+ *
+ * No-op when `placement` or `cursorTile` is null (nothing to preview). Pure read
+ * of World + map; no mutation, no `Math.random`. `faction` only selects the
+ * (faction-mirrored, hence size-identical) stats row for the footprint.
+ */
+export function drawPlacementGhost(
+  ctx: CanvasCtx,
+  world: World,
+  camera: Camera,
+  faction: Faction,
+  placement: { readonly building: BuildingKind } | null,
+  cursorTile: Vec2 | null,
+): void {
+  if (placement === null || cursorTile === null) return;
+
+  const footprint = getBuildingStats(faction, placement.building).footprint;
+  const ts = camera.tileSize;
+  const sx = worldToScreenX(camera, cursorTile.x);
+  const sy = worldToScreenY(camera, cursorTile.y);
+  const w = footprint.w * ts;
+  const h = footprint.h * ts;
+
+  const buildable = world.map.canPlaceBuilding(cursorTile, footprint);
+
+  ctx.fillStyle = buildable ? PLACEMENT_GHOST_VALID : PLACEMENT_GHOST_INVALID;
+  ctx.fillRect(sx, sy, w, h);
+
+  // A crisp outline in the same hue makes the footprint edges legible over busy
+  // terrain.
+  ctx.strokeStyle = buildable ? "#40dc60" : "#dc3030";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(sx, sy, w, h);
 }

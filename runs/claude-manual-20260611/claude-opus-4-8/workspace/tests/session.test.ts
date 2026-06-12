@@ -19,10 +19,12 @@
 
 import { describe, it, expect } from "vitest";
 import { GameSession } from "../src/game/session.js";
+import type { SessionViewport } from "../src/game/session.js";
 import { SIM_HZ } from "../src/sim/simulation.js";
 import type { World } from "../src/sim/world.js";
 import type { Building } from "../src/sim/entity.js";
 import type { Faction } from "../src/game/types.js";
+import { campaignLevel } from "../src/game/campaign.js";
 
 const SEED = 0xc0ffee;
 const LEVEL = 0;
@@ -142,6 +144,54 @@ describe("GameSession.checkEndCondition", () => {
     // A large dt that would otherwise drain MANY steps must drain none.
     s.frame(10_000);
     expect(s.world.tick).toBe(tickAtDecision);
+  });
+});
+
+// ===========================================================================
+// (a2) D3 — the match world uses the CAMPAIGN LEVEL's dimensions, not 48×48
+// ===========================================================================
+
+describe("GameSession map dimensions follow the campaign level (D3)", () => {
+  /** A minimal viewport so the constructor's width/height go in the 6th/7th slot. */
+  const VIEWPORT: SessionViewport = { tileSize: 24, viewportW: 800, viewportH: 600 };
+
+  /** Builds a session exactly as `main.ts` does: forwarding `level.width/height`. */
+  function sessionForLevel(levelIndex: number): GameSession {
+    const level = campaignLevel(levelIndex);
+    return new GameSession(
+      SEED,
+      levelIndex,
+      PLAYER,
+      level.aiDifficulty,
+      VIEWPORT,
+      level.width,
+      level.height,
+    );
+  }
+
+  it("level 0 (Greenfields) yields a 32×32 world map", () => {
+    const s = sessionForLevel(0);
+    expect(campaignLevel(0).width).toBe(32);
+    expect(s.world.map.width).toBe(32);
+    expect(s.world.map.height).toBe(32);
+  });
+
+  // 96×96 WFC generation costs several seconds; give it a generous per-test
+  // budget (the default 5 s timeout is too tight), mirroring campaign.test.ts.
+  it("level 4 (Ironhold) yields a 96×96 world map — size escalation is realized in play", () => {
+    const s = sessionForLevel(4);
+    expect(campaignLevel(4).name).toBe("Ironhold");
+    expect(campaignLevel(4).width).toBe(96);
+    expect(s.world.map.width).toBe(96);
+    expect(s.world.map.height).toBe(96);
+  }, 60_000);
+
+  it("regression guard: a session built WITHOUT explicit dimensions still defaults to 48×48", () => {
+    // The default arg path (no width/height) must keep the historical 48×48 size,
+    // so existing 4-arg / 5-arg callers and tests are unaffected by D3.
+    const s = new GameSession(SEED, 0, PLAYER, 1);
+    expect(s.world.map.width).toBe(48);
+    expect(s.world.map.height).toBe(48);
   });
 });
 

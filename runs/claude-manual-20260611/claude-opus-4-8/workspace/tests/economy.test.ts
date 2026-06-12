@@ -387,6 +387,60 @@ describe("forest harvesting and depletion", () => {
 });
 
 // ---------------------------------------------------------------------------
+// (d2) D2 — harvest order honors its targetId (clicked resource), not nearest
+// ---------------------------------------------------------------------------
+
+describe("harvest order targetId is honored (D2)", () => {
+  /** Encodes a tile as the input layer does: y * map.width + x. */
+  function encodeTile(world: World, x: number, y: number): number {
+    return y * world.map.width + x;
+  }
+
+  it("a worker harvests the FAR resource named by targetId, not the nearer one", () => {
+    const world = makeWorld(20, 20, "grass");
+
+    // A near forest at (6, 10) and a far one at (18, 2). The worker sits beside
+    // the near forest, so pure proximity would pick (6, 10). (Forests are used
+    // rather than gold mines because GameMap seeds a tile's gold only for
+    // goldMine tiles present at construction; terrain set afterward reads as a
+    // depleted mine. Forest is a live resource the moment its tile is forest, so
+    // it exercises the same targetId-vs-proximity selection deterministically.)
+    world.map.terrain.set(6, 10, "forest");
+    world.map.terrain.set(18, 2, "forest");
+
+    const worker = placeUnit(world, "worker", "human", { x: 7.5, y: 10.5 });
+    // targetId names the FAR forest at (18, 2).
+    const farId = encodeTile(world, 18, 2);
+    worker.order = { kind: "harvest", targetId: makeEntityId(farId) };
+
+    // One economy tick bootstraps the harvest cycle and records the chosen tile.
+    phaseEconomy(world);
+
+    expect(worker.harvestState).toBeDefined();
+    expect(worker.harvestState!.resourceTile).toEqual(vec(18, 2));
+    // And explicitly NOT the nearer resource.
+    expect(worker.harvestState!.resourceTile).not.toEqual(vec(6, 10));
+  });
+
+  it("falls back to the NEAREST resource when targetId does not name a live tile", () => {
+    const world = makeWorld(20, 20, "grass");
+    world.map.terrain.set(6, 10, "forest"); // near
+    world.map.terrain.set(18, 2, "forest"); // far
+
+    const worker = placeUnit(world, "worker", "human", { x: 7.5, y: 10.5 });
+    // targetId 999 decodes to (x=19, y=49) on a width-20 map → out of bounds,
+    // i.e. not a live resource tile, so the proximity fallback must engage.
+    worker.order = { kind: "harvest", targetId: makeEntityId(999) };
+
+    phaseEconomy(world);
+
+    expect(worker.harvestState).toBeDefined();
+    // The near forest (6,10) is closer than the far one (18,2) to (7.5,10.5).
+    expect(worker.harvestState!.resourceTile).toEqual(vec(6, 10));
+  });
+});
+
+// ---------------------------------------------------------------------------
 // (e) Prerequisite enforcement for ranged units
 // ---------------------------------------------------------------------------
 

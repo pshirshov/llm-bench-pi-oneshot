@@ -14,9 +14,10 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { createWorld } from "../src/sim/world.js";
 import type { World } from "../src/sim/world.js";
-import type { EntityId, Faction } from "../src/game/types.js";
+import type { EntityId, Faction, UnitKind } from "../src/game/types.js";
 import { makeEntityId } from "../src/game/types.js";
-import type { Unit } from "../src/sim/entity.js";
+import type { Building, Unit } from "../src/sim/entity.js";
+import { getBuildingStats } from "../src/sim/stats.js";
 import { createCamera } from "../src/render/camera.js";
 import type { Camera } from "../src/render/camera.js";
 import { buildHudLayout } from "../src/ui/hud.js";
@@ -381,6 +382,146 @@ describe("input: attack-move mode", () => {
     ctx.placement = { building: "barracks" };
     handleKeyDown(ctx, "Escape", false);
     expect(ctx.placement).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// (D6) Train intent — a left-click on a train HUD button sets building.order;
+//      it is a NO-OP for an enemy-owned or absent selected building.
+// ---------------------------------------------------------------------------
+
+/**
+ * Injects a COMPLETE production building at `tile` for `owner`. The footprint is
+ * cleared to buildable ground first so placement succeeds on any seeded terrain,
+ * then the building is registered and its footprint occupied (mirroring the
+ * world's own `addBuilding`, but without its supply bookkeeping, which these
+ * train-intent tests do not exercise).
+ */
+function injectBuilding(
+  world: World,
+  kind: Building["kind"],
+  owner: Faction,
+  tile: { x: number; y: number },
+): Building {
+  const stats = getBuildingStats(owner, kind);
+  world.map.clearForBuilding(tile, stats.footprint);
+  const b: Building = {
+    id: world.nextId(),
+    owner,
+    kind,
+    hp: stats.hp,
+    maxHp: stats.hp,
+    tile,
+    footprint: stats.footprint,
+    buildProgress: 1,
+    trainQueue: [],
+  };
+  world.buildings.set(b.id, b);
+  world.map.occupy(tile, stats.footprint, b.id);
+  return b;
+}
+
+/**
+ * Builds an InputContext whose HUD layout is computed with `selectedBuilding`
+ * selected, so the production building's train buttons are present for hit-test.
+ */
+function ctxWithSelectedBuilding(
+  world: World,
+  faction: Faction,
+  selectedBuilding: EntityId | undefined,
+): InputContextWithDrag {
+  const base = makeCtx(world, faction);
+  // `hudLayout` is readonly on the interface, so rebuild the context as a fresh
+  // literal with the building-selected layout rather than reassigning the field.
+  return {
+    ...base,
+    selectedBuilding,
+    hudLayout: buildHudLayout(
+      VIEWPORT_W,
+      VIEWPORT_H,
+      faction,
+      world,
+      new Set<number>(),
+      selectedBuilding,
+    ),
+  };
+}
+
+/** Centre of the first command button whose intent trains `unit`. */
+function trainButtonCenter(layout: HudLayout, unit: UnitKind): { x: number; y: number } {
+  const btn = layout.commandButtons.find(
+    (b) => b.intent.kind === "train" && b.intent.unit === unit,
+  );
+  if (btn === undefined) throw new Error(`no train button for ${unit} in layout`);
+  return { x: btn.rect.x + btn.rect.w / 2, y: btn.rect.y + btn.rect.h / 2 };
+}
+
+describe("input: train intent (D6)", () => {
+  let world: World;
+
+  beforeEach(() => {
+    world = createWorld(SEED, LEVEL, "human", 2);
+  });
+
+  it("left-click on a train button sets building.order = {kind:'train', unitKind} on an OWNED production building", () => {
+    const barracks = injectBuilding(world, "barracks", "human", { x: 20, y: 20 });
+    const ctx = ctxWithSelectedBuilding(world, "human", barracks.id);
+
+    // A barracks trains infantry/ranged/heavy; click the infantry button.
+    const { x, y } = trainButtonCenter(ctx.hudLayout, "infantry");
+    const result = handleLeftClick(ctx, x, y, false);
+
+    // The click is reported as a HUD intent…
+    expect(result?.kind).toBe("hudIntent");
+    // …and the train order is set on the selected building.
+    expect(barracks.order).toBeDefined();
+    expect(barracks.order!.kind).toBe("train");
+    if (barracks.order!.kind === "train") {
+      expect(barracks.order!.unitKind).toBe("infantry");
+    }
+  });
+
+  it("is a NO-OP for an ENEMY-owned selected building (ownership guard)", () => {
+    // The building belongs to orc, but the player faction is human. Build the
+    // HUD with it 'selected' so a train button exists to click; the ownership
+    // guard in applyTrainIntent must refuse to set the order.
+    const orcBarracks = injectBuilding(world, "barracks", "orc", { x: 20, y: 20 });
+    const ctx = ctxWithSelectedBuilding(world, "human", orcBarracks.id);
+
+    const { x, y } = trainButtonCenter(ctx.hudLayout, "infantry");
+    handleLeftClick(ctx, x, y, false);
+
+    // No train order was set on the enemy building.
+    expect(orcBarracks.order).toBeUndefined();
+  });
+
+  it("is a NO-OP when no building is selected (selectedBuilding undefined)", () => {
+    // Build a barracks but DON'T select it; instead hand-craft a layout that
+    // exposes a train button while selectedBuilding is undefined, proving the
+    // guard keys on selectedBuilding rather than on the click alone.
+    const barracks = injectBuilding(world, "barracks", "human", { x: 20, y: 20 });
+    const base = makeCtx(world, "human");
+    // Borrow a train-button layout (computed as if the barracks were selected),
+    // but leave selectedBuilding undefined. `hudLayout` is readonly, so assemble
+    // a fresh context literal.
+    const ctx: InputContextWithDrag = {
+      ...base,
+      selectedBuilding: undefined,
+      hudLayout: buildHudLayout(
+        VIEWPORT_W,
+        VIEWPORT_H,
+        "human",
+        world,
+        new Set<number>(),
+        barracks.id,
+      ),
+    };
+
+    const { x, y } = trainButtonCenter(ctx.hudLayout, "infantry");
+    handleLeftClick(ctx, x, y, false);
+
+    // The order must NOT have been set — no selected building to train from.
+    expect(barracks.order).toBeUndefined();
   });
 });
 
