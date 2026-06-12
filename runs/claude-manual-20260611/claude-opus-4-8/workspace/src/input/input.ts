@@ -21,7 +21,7 @@ import {
 import type { HudLayout } from "../ui/hud.js";
 import { hudButtonsAt } from "../ui/hud.js";
 import type { Building, Unit } from "../sim/entity.js";
-import type { EntityId, Faction, BuildingKind } from "../game/types.js";
+import type { EntityId, Faction, BuildingKind, UnitKind } from "../game/types.js";
 import {
   moveTo,
   attack,
@@ -296,8 +296,14 @@ export function handleLeftClick(
     if (intent.kind === "build") {
       // Enter placement mode — reset existing placement
       ctx.placement = { building: intent.building };
+    } else {
+      // Train intent: set the train order on the selected production building so
+      // the economy phase enqueues the unit (the AI sets the same order directly;
+      // this is the human-side equivalent). A train button only appears in the
+      // HUD when a production building of this faction is selected, but we still
+      // verify ownership + that the building can train the kind before issuing.
+      applyTrainIntent(ctx, intent.unit);
     }
-    // "train" intent is handled by the GameSession on the returned value
     return { kind: "hudIntent", intent };
   }
 
@@ -357,6 +363,24 @@ export function handleLeftClick(
     ctx.selectedBuilding = undefined;
   }
   return undefined;
+}
+
+/**
+ * Issues a train order for `unitKind` on the currently-selected building.
+ *
+ * The economy phase reads `building.order` each tick: an explicit `train` order
+ * enqueues one job (subject to gold/wood/supply/prerequisite checks) and then
+ * resets the order, so one click queues one unit — the same contract the AI uses
+ * by setting this order directly. A no-op unless a building owned by the player's
+ * faction is selected (train buttons only surface for such a selection, but the
+ * ownership guard keeps the handler safe regardless of how it is called).
+ */
+function applyTrainIntent(ctx: InputContextWithDrag, unitKind: UnitKind): void {
+  const id = ctx.selectedBuilding;
+  if (id === undefined) return;
+  const building = ctx.world.buildings.get(id);
+  if (building === undefined || building.owner !== ctx.faction) return;
+  building.order = { kind: "train", unitKind };
 }
 
 /**
