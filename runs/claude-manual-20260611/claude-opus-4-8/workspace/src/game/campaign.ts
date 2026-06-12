@@ -51,13 +51,24 @@ export interface CampaignLevel {
   /** AI opponent difficulty (1..5; rises with the level). */
   readonly aiDifficulty: AiDifficulty;
   /**
-   * One-line designer intent for the level's terrain feel. The current
-   * `generateMap` takes no terrain-density parameters beyond size + seed, so
-   * the escalation of "more water/mountains, tighter chokepoints, scarcer
-   * resources" is realised through (a) the growing map dimensions — a larger
-   * WFC field yields proportionally more of the constrained tile types and more
-   * natural chokepoints — and (b) this documented intent, retained so the
-   * progression is explicit even though it is not yet a tunable mapgen knob.
+   * Terrain-scarcity factor in [0, 1], RISING with the level, threaded into
+   * `generateMap` (via `levelMap`) as `opts.scarcity`. Higher values raise the
+   * WFC collapse weight of constrained terrain (water / rock — more chokepoints)
+   * and lower that of free resources (forest / goldMine — scarcer wood and
+   * gold), realising the spec's "terrain gets more constrained … scarcer
+   * resources" escalation as an actual mapgen knob (not size alone). Level 0 is
+   * 0, so its map is bit-identical to the pre-scarcity behaviour; the playability
+   * / repair pass still guarantees two reachable starts each with a gold mine +
+   * forest within reach at every scarcity level.
+   */
+  readonly scarcity: number;
+  /**
+   * One-line designer intent for the level's terrain feel. The escalation of
+   * "more water/mountains, tighter chokepoints, scarcer resources" is realised
+   * through (a) the growing map dimensions — a larger WFC field yields
+   * proportionally more constrained tiles and more natural chokepoints — and
+   * (b) the rising `scarcity` knob above, which biases the WFC weights toward
+   * constrained terrain and away from free resources.
    */
   readonly terrainHint: string;
 }
@@ -74,6 +85,8 @@ export const CAMPAIGN_LEVELS: readonly CampaignLevel[] = Object.freeze([
     width: 32,
     height: 32,
     aiDifficulty: 1,
+    // 0 ⇒ the map is bit-identical to the pre-scarcity generator.
+    scarcity: 0,
     terrainHint: "Open rolling grassland; few obstacles, generous resources.",
   },
   {
@@ -82,6 +95,7 @@ export const CAMPAIGN_LEVELS: readonly CampaignLevel[] = Object.freeze([
     width: 48,
     height: 48,
     aiDifficulty: 2,
+    scarcity: 0.2,
     terrainHint: "Rivers and lakes split the field; resources still plentiful.",
   },
   {
@@ -90,6 +104,7 @@ export const CAMPAIGN_LEVELS: readonly CampaignLevel[] = Object.freeze([
     width: 64,
     height: 64,
     aiDifficulty: 3,
+    scarcity: 0.45,
     terrainHint: "Rocky highlands with mountain ridges and tighter passes.",
   },
   {
@@ -98,6 +113,7 @@ export const CAMPAIGN_LEVELS: readonly CampaignLevel[] = Object.freeze([
     width: 80,
     height: 80,
     aiDifficulty: 4,
+    scarcity: 0.65,
     terrainHint: "Water and rock force narrow chokepoints; resources scarcer.",
   },
   {
@@ -106,6 +122,7 @@ export const CAMPAIGN_LEVELS: readonly CampaignLevel[] = Object.freeze([
     width: 96,
     height: 96,
     aiDifficulty: 5,
+    scarcity: 0.85,
     terrainHint: "Cramped, heavily obstructed terrain; the scarcest resources.",
   },
 ] as const);
@@ -158,20 +175,23 @@ export function levelSeed(campaignSeed: number, levelIndex: number): number {
 
 /**
  * Deterministically generates level `levelIndex`'s playable map for the given
- * campaign seed. Uses the level's fixed dimensions and the derived per-level
- * seed; the level index is also threaded into `generateMap` so the result is
- * keyed identically to the `GameSession`/`createWorld` the match runs on. The
- * app shell (`main.ts`) constructs that session with this same `levelSeed` +
- * `levelIndex` AND the same `level.width`/`level.height`, so `createWorld`'s
- * internal `generateMap(width, height, seed, levelIndex)` call matches this one
- * exactly — the previewed map and the played map are bit-identical.
+ * campaign seed. Uses the level's fixed dimensions, the derived per-level seed,
+ * and the level's `scarcity`; the level index is also threaded into
+ * `generateMap` so the result is keyed identically to the
+ * `GameSession`/`createWorld` the match runs on. The app shell (`main.ts`)
+ * constructs that session with this same `levelSeed` + `levelIndex` AND the same
+ * `level.width`/`level.height`/`level.scarcity`, so `createWorld`'s internal
+ * `generateMap(width, height, seed, levelIndex, { scarcity })` call matches this
+ * one exactly — the previewed map and the played map are bit-identical.
  *
  * Pure in `(campaignSeed, levelIndex)`: repeated calls return bit-identical
  * grids, starts, and reports.
  */
 export function levelMap(campaignSeed: number, levelIndex: number): MapGenResult {
   const level = campaignLevel(levelIndex);
-  return generateMap(level.width, level.height, levelSeed(campaignSeed, levelIndex), levelIndex);
+  return generateMap(level.width, level.height, levelSeed(campaignSeed, levelIndex), levelIndex, {
+    scarcity: level.scarcity,
+  });
 }
 
 // ---------------------------------------------------------------------------

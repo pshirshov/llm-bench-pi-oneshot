@@ -295,16 +295,19 @@ function findBuildableAnchor(
  * footprint-sized rectangle exists near `start` (dense WFC forest/rock around a
  * corner start), carve one. Picks the in-bounds anchor closest to `start`
  * (same ring order as `findBuildableAnchor`) whose footprint stays fully
- * in-bounds AND does NOT cover the start's nearest gold mine, converts that
- * rectangle to clear ground via `GameMap.clearForBuilding`, and returns the
- * anchor. The mine is thereby preserved for the economy; only the building pad
- * is bulldozed. Fully deterministic (fixed scan order, no RNG). Throws only if
- * no in-bounds footprint exists at all (a sub-footprint-sized map), which the
+ * in-bounds AND covers the FEWEST gold-mine tiles — preferring a strictly
+ * mine-free pad and only overlapping mines when no mine-free anchor exists in
+ * range. The chosen rectangle is converted to clear ground via
+ * `GameMap.clearForBuilding`, and the anchor returned. Preserving every nearby
+ * gold mine (not just the single nearest one) keeps a second mine the 4×4
+ * footprint would otherwise straddle alive for the economy; only the building
+ * pad is bulldozed. Fully deterministic (fixed scan order, no RNG). Throws only
+ * if no in-bounds footprint exists at all (a sub-footprint-sized map), which the
  * default 48×48 dimensions exclude.
  */
-function carveBuildableAnchor(map: GameMap, start: Vec2, footprint: Footprint): Vec2 {
-  const mine = nearestGoldMine(map, start);
-  const anchor = nearestInBoundsAnchorAvoiding(map, start, footprint, mine);
+export function carveBuildableAnchor(map: GameMap, start: Vec2, footprint: Footprint): Vec2 {
+  const mines = goldMineTilesNear(map, start);
+  const anchor = fewestMineAnchor(map, start, footprint, mines);
   if (anchor === null) {
     throw new Error(
       `carveBuildableAnchor: no in-bounds ${footprint.w}x${footprint.h} footprint ` +
@@ -316,50 +319,56 @@ function carveBuildableAnchor(map: GameMap, start: Vec2, footprint: Footprint): 
 }
 
 /**
- * Nearest gold-mine tile to `start` by Chebyshev distance within
- * MAX_HALL_PLACEMENT_RADIUS, ties broken by lowest flat index for determinism;
- * null if none is near. Used so the fallback carve never bulldozes the mine the
- * starting economy will harvest.
+ * Flat-index set of every gold-mine tile within MAX_HALL_PLACEMENT_RADIUS
+ * (Chebyshev) of `start`. The carve avoids ALL of these, not just the nearest,
+ * so a 4×4 footprint straddling two mines does not silently destroy the
+ * non-nearest one. Membership is keyed `y * map.width + x` for O(1) lookup.
  */
-function nearestGoldMine(map: GameMap, start: Vec2): Vec2 | null {
-  let best: Vec2 | null = null;
-  let bestD = Number.POSITIVE_INFINITY;
+function goldMineTilesNear(map: GameMap, start: Vec2): Set<number> {
+  const mines = new Set<number>();
   const r = MAX_HALL_PLACEMENT_RADIUS;
   for (let y = start.y - r; y <= start.y + r; y++) {
     for (let x = start.x - r; x <= start.x + r; x++) {
       if (!map.inBounds(x, y)) continue;
       if (map.tileAt(x, y) !== "goldMine") continue;
-      const d = Math.max(Math.abs(x - start.x), Math.abs(y - start.y));
-      if (d < bestD) {
-        bestD = d;
-        best = vec(x, y);
-      }
+      mines.add(y * map.width + x);
     }
   }
-  return best;
+  return mines;
 }
 
 /**
  * Nearest in-bounds anchor to `start` (ring order: distance from start to the
- * nearest footprint tile, then row-major) whose footprint is fully in-bounds and
- * does not cover `avoid` (when given). Buildability is NOT required — the caller
- * carves the rectangle clear afterwards. Returns null only if no fully-in-bounds
- * footprint exists at all.
+ * nearest footprint tile, then row-major) whose footprint is fully in-bounds,
+ * minimising the number of `mines` tiles the footprint covers. Buildability is
+ * NOT required — the caller carves the rectangle clear afterwards. The FIRST
+ * mine-free anchor in ring order is returned immediately (the common, ideal
+ * case); otherwise the anchor with the fewest covered mines wins, ties broken by
+ * the earlier ring position (the running best is only replaced on a STRICTLY
+ * smaller count), so the result is a deterministic function of the map. Returns
+ * null only if no fully-in-bounds footprint exists at all.
  */
-function nearestInBoundsAnchorAvoiding(
+function fewestMineAnchor(
   map: GameMap,
   start: Vec2,
   footprint: Footprint,
-  avoid: Vec2 | null,
+  mines: ReadonlySet<number>,
 ): Vec2 | null {
-  const covers = (anchor: Vec2, p: Vec2): boolean =>
-    p.x >= anchor.x &&
-    p.x < anchor.x + footprint.w &&
-    p.y >= anchor.y &&
-    p.y < anchor.y + footprint.h;
+  const stride = map.width;
+  const minesCovered = (ax: number, ay: number): number => {
+    if (mines.size === 0) return 0;
+    let n = 0;
+    for (let dy = 0; dy < footprint.h; dy++) {
+      for (let dx = 0; dx < footprint.w; dx++) {
+        if (mines.has((ay + dy) * stride + (ax + dx))) n++;
+      }
+    }
+    return n;
+  };
 
   const seen = new Set<number>();
-  const stride = map.width;
+  let best: Vec2 | null = null;
+  let bestCount = Number.POSITIVE_INFINITY;
   for (let d = 0; d <= MAX_HALL_PLACEMENT_RADIUS; d++) {
     const minX = start.x - (footprint.w - 1) - d;
     const maxX = start.x + d;
@@ -367,19 +376,22 @@ function nearestInBoundsAnchorAvoiding(
     const maxY = start.y + d;
     for (let ay = minY; ay <= maxY; ay++) {
       for (let ax = minX; ax <= maxX; ax++) {
-        const anchor = vec(ax, ay);
         // Footprint must be entirely in bounds.
         if (!map.inBounds(ax, ay)) continue;
         if (!map.inBounds(ax + footprint.w - 1, ay + footprint.h - 1)) continue;
         const key = ay * stride + ax;
         if (seen.has(key)) continue;
         seen.add(key);
-        if (avoid !== null && covers(anchor, avoid)) continue;
-        return anchor;
+        const count = minesCovered(ax, ay);
+        if (count === 0) return vec(ax, ay); // ideal: a strictly mine-free pad
+        if (count < bestCount) {
+          bestCount = count;
+          best = vec(ax, ay);
+        }
       }
     }
   }
-  return null;
+  return best;
 }
 
 /**
@@ -430,10 +442,15 @@ function walkableRing(
  * Builds a fresh `World` for a campaign match: generates the seeded map, places
  * each faction's opening base at its start tile, and sets starting resources.
  *
- * Determinism: identical (seed, levelIndex, playerFaction, aiDifficulty) always
- * produce a deeply-equal World — the map is seed-derived and entity spawning is
- * a fixed, RNG-free scan, so two worlds from the same arguments are bit-equal
- * before any `stepWorld` call.
+ * `scarcity` (default 0) is forwarded to `generateMap` as `opts.scarcity`, the
+ * per-level terrain-constraint factor (more water/rock, fewer free resources).
+ * At 0 the map is bit-identical to the pre-scarcity generator, so every existing
+ * call site that omits it is unaffected.
+ *
+ * Determinism: identical (seed, levelIndex, playerFaction, aiDifficulty, width,
+ * height, scarcity) always produce a deeply-equal World — the map is
+ * seed+scarcity-derived and entity spawning is a fixed, RNG-free scan, so two
+ * worlds from the same arguments are bit-equal before any `stepWorld` call.
  */
 export function createWorld(
   seed: number,
@@ -442,8 +459,9 @@ export function createWorld(
   aiDifficulty: AiDifficulty,
   width: number = DEFAULT_MAP_WIDTH,
   height: number = DEFAULT_MAP_HEIGHT,
+  scarcity: number = 0,
 ): World {
-  const { grid, starts, report } = generateMap(width, height, seed, levelIndex);
+  const { grid, starts, report } = generateMap(width, height, seed, levelIndex, { scarcity });
   const map = new GameMap(grid);
 
   const players: Record<Faction, PlayerState> = {

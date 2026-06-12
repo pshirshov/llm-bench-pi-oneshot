@@ -28,14 +28,30 @@ import {
   TILE_WEIGHTS,
   domainSize,
 } from "./tiles.js";
-import type { Domain, TileType } from "./tiles.js";
+import type { Domain, TileType, WeightTable } from "./tiles.js";
 
 /** Bounded number of full re-collapse attempts before giving up. */
 const MAX_ATTEMPTS = 50;
 
-/** Per-tile weight indexed by bit position, and ln(weight) for entropy. */
-const WEIGHT_BY_INDEX: readonly number[] = TILE_TYPES.map((t) => TILE_WEIGHTS[t]);
-const WEIGHT_LOG_BY_INDEX: readonly number[] = WEIGHT_BY_INDEX.map((w) => Math.log(w));
+/**
+ * Per-tile collapse weight (and ln(weight)) indexed by bit position. Derived
+ * from a `WeightTable` for the duration of one `solve` so the table can vary per
+ * call (e.g. a scarcity-scaled table) WITHOUT any module-level mutable state.
+ * `weight` is the raw weight used by `weightedPick`; `weightLog` is `ln(weight)`
+ * precomputed for the entropy formula.
+ */
+interface IndexedWeights {
+  readonly weight: readonly number[];
+  readonly weightLog: readonly number[];
+}
+
+function indexWeights(table: WeightTable): IndexedWeights {
+  const weight = TILE_TYPES.map((t) => table[t]);
+  return { weight, weightLog: weight.map((w) => Math.log(w)) };
+}
+
+/** Default indexed weights (base `TILE_WEIGHTS`); reused when no table is given. */
+const DEFAULT_WEIGHTS: IndexedWeights = indexWeights(TILE_WEIGHTS);
 
 /**
  * Shannon entropy of a domain given the tile weights.  Lower entropy ⇒ fewer /
@@ -43,14 +59,14 @@ const WEIGHT_LOG_BY_INDEX: readonly number[] = WEIGHT_BY_INDEX.map((w) => Math.l
  *   H = log(W) - (Σ wᵢ·log wᵢ) / W,  W = Σ wᵢ over allowed tiles i.
  * A fully-collapsed domain (one tile) has entropy 0.
  */
-function entropy(domain: Domain): number {
+function entropy(domain: Domain, w: IndexedWeights): number {
   let sumW = 0;
   let sumWLog = 0;
   for (let i = 0; i < TILE_COUNT; i++) {
     if ((domain & (1 << i)) !== 0) {
-      const w = WEIGHT_BY_INDEX[i];
-      sumW += w;
-      sumWLog += w * WEIGHT_LOG_BY_INDEX[i];
+      const wi = w.weight[i];
+      sumW += wi;
+      sumWLog += wi * w.weightLog[i];
     }
   }
   if (sumW <= 0) return 0;
@@ -58,19 +74,19 @@ function entropy(domain: Domain): number {
 }
 
 /**
- * Picks one tile bit-index from a domain, weighted by TILE_WEIGHTS, using the
- * RNG.  Precondition: the domain is non-empty.
+ * Picks one tile bit-index from a domain, weighted by the given weight table,
+ * using the RNG.  Precondition: the domain is non-empty.
  */
-function weightedPick(domain: Domain, rng: RNG): number {
+function weightedPick(domain: Domain, rng: RNG, w: IndexedWeights): number {
   let total = 0;
   for (let i = 0; i < TILE_COUNT; i++) {
-    if ((domain & (1 << i)) !== 0) total += WEIGHT_BY_INDEX[i];
+    if ((domain & (1 << i)) !== 0) total += w.weight[i];
   }
   // rng.next() ∈ [0,1); scale into [0,total).
   let r = rng.next() * total;
   for (let i = 0; i < TILE_COUNT; i++) {
     if ((domain & (1 << i)) !== 0) {
-      r -= WEIGHT_BY_INDEX[i];
+      r -= w.weight[i];
       if (r < 0) return i;
     }
   }
@@ -112,10 +128,10 @@ type AttemptResult =
   | { readonly ok: false };
 
 /**
- * Runs a single WFC attempt over a fresh domain grid using `rng`.
- * Returns ok:false on contradiction (an emptied domain).
+ * Runs a single WFC attempt over a fresh domain grid using `rng` and the given
+ * indexed weights. Returns ok:false on contradiction (an emptied domain).
  */
-function runAttempt(width: number, height: number, rng: RNG): AttemptResult {
+function runAttempt(width: number, height: number, rng: RNG, w: IndexedWeights): AttemptResult {
   const domains = new Grid<Domain>(width, height, FULL_DOMAIN);
 
   /**
@@ -154,7 +170,7 @@ function runAttempt(width: number, height: number, rng: RNG): AttemptResult {
       for (let x = 0; x < width; x++) {
         const d = domains.get(x, y);
         if (domainSize(d) <= 1) continue; // already decided (or contradiction)
-        const h = entropy(d);
+        const h = entropy(d, w);
         if (h < bestEntropy - 1e-9) {
           bestEntropy = h;
           bestX = x;
@@ -173,8 +189,8 @@ function runAttempt(width: number, height: number, rng: RNG): AttemptResult {
 
     if (bestX === -1) break; // nothing left with >1 option
 
-    // (2) collapse the chosen cell, weighted by TILE_WEIGHTS.
-    const chosenBit = weightedPick(domains.get(bestX, bestY), rng);
+    // (2) collapse the chosen cell, weighted by the active weight table.
+    const chosenBit = weightedPick(domains.get(bestX, bestY), rng, w);
     domains.set(bestX, bestY, 1 << chosenBit);
 
     // (3) propagate to a fixpoint; bail on contradiction.
@@ -208,22 +224,36 @@ function bitToTile(domain: Domain): TileType {
 /**
  * Solves a `width` x `height` map with Wave Function Collapse.
  *
- * Deterministic in (width, height, rng): the same seeded RNG yields the same
- * grid every time.  On contradiction the attempt is abandoned and retried from
- * a freshly forked RNG (labelled by attempt number, so the retry stream is
- * itself deterministic) up to MAX_ATTEMPTS.  Returns null only if every bounded
- * attempt contradicts — which, for these permissive rules, should be rare.
+ * Deterministic in (width, height, rng, weights): the same seeded RNG and weight
+ * table yield the same grid every time.  On contradiction the attempt is
+ * abandoned and retried from a freshly forked RNG (labelled by attempt number,
+ * so the retry stream is itself deterministic) up to MAX_ATTEMPTS.  Returns null
+ * only if every bounded attempt contradicts — which, for these permissive rules,
+ * should be rare.
+ *
+ * `weights` defaults to the base `TILE_WEIGHTS`; passing a different table (e.g.
+ * a scarcity-scaled one) only changes collapse frequencies, never the adjacency
+ * constraints, so every emitted grid still satisfies the adjacency rules. When
+ * the table IS the base `TILE_WEIGHTS` (object identity), the precomputed default
+ * indexed weights are reused so the no-scarcity path is bit-identical to before.
  */
-export function solve(width: number, height: number, rng: RNG): Grid<TileType> | null {
+export function solve(
+  width: number,
+  height: number,
+  rng: RNG,
+  weights: WeightTable = TILE_WEIGHTS,
+): Grid<TileType> | null {
   if (width <= 0 || height <= 0) {
     throw new RangeError(`solve: dimensions must be positive, got ${width}x${height}`);
   }
+
+  const w = weights === TILE_WEIGHTS ? DEFAULT_WEIGHTS : indexWeights(weights);
 
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     // Each attempt draws from an independent, deterministic substream so that
     // attempt N is reproducible and uncorrelated with attempt N-1.
     const attemptRng = rng.fork(`wfc-attempt-${attempt}`);
-    const result = runAttempt(width, height, attemptRng);
+    const result = runAttempt(width, height, attemptRng, w);
     if (result.ok) {
       return result.domains.map((d) => bitToTile(d));
     }

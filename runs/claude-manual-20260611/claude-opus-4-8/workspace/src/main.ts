@@ -263,7 +263,8 @@ function startMatch(app: App, levelIndex: number): void {
   // player sees matches `levelMap(campaignSeed, levelIndex)` exactly, and is
   // reproducible from (campaign seed, level number). The level's declared
   // width/height are forwarded so the match map uses the campaign level's size
-  // (32/48/64/80/96) instead of createWorld's 48×48 default.
+  // (32/48/64/80/96) instead of createWorld's 48×48 default, and its scarcity so
+  // the played terrain matches the previewed map's constraint level.
   const session = new GameSession(
     levelSeed(app.campaignSeed, levelIndex),
     levelIndex,
@@ -272,6 +273,7 @@ function startMatch(app: App, levelIndex: number): void {
     viewport,
     level.width,
     level.height,
+    level.scarcity,
   );
 
   app.session = session;

@@ -57,6 +57,53 @@ export const TILE_WEIGHTS: Readonly<Record<TileType, number>> = Object.freeze({
   goldMine: 1,
 });
 
+/** A full per-tile collapse-weight table (every tile present, all weights > 0). */
+export type WeightTable = Readonly<Record<TileType, number>>;
+
+/**
+ * Multipliers applied to the base weights at scarcity = 1. Scarcity scales each
+ * tile's weight by `lerp(1, MULT, scarcity)`, so scarcity 0 reproduces
+ * `TILE_WEIGHTS` exactly. Constrained terrain (water / rock) gets MORE common,
+ * free resources (forest / goldMine) LESS common; the connective grass/dirt are
+ * left at 1 so the map stays solvable (they border everything and keep the WFC
+ * adjacency graph from over-constraining). Tuned modestly so the playability /
+ * repair pass can still guarantee two reachable starts with gold + forest in
+ * reach at the top of the scarcity range.
+ */
+const SCARCITY_WEIGHT_MULTIPLIER: WeightTable = Object.freeze({
+  grass: 1,
+  dirt: 1,
+  forest: 0.6,
+  water: 2.2,
+  rock: 2.5,
+  goldMine: 0.5,
+});
+
+/** Linear interpolation from `a` (t=0) to `b` (t=1). */
+function lerp(a: number, b: number, t: number): number {
+  return a + (b - a) * t;
+}
+
+/**
+ * The collapse-weight table for a given `scarcity` ∈ [0, 1]. At 0 it is exactly
+ * `TILE_WEIGHTS`; rising scarcity interpolates each weight toward
+ * `weight * SCARCITY_WEIGHT_MULTIPLIER[tile]`, raising constrained-terrain
+ * frequency and lowering free-resource frequency. `scarcity` is clamped to
+ * [0, 1]. Every returned weight stays strictly positive (the multipliers and the
+ * base weights are all > 0), which `weightedPick` / `entropy` require. Pure: a
+ * fresh frozen table each call, no module-level mutable state — so two same-seed
+ * solves with the same scarcity stay bit-identical.
+ */
+export function scaledWeights(scarcity: number): WeightTable {
+  const s = scarcity <= 0 ? 0 : scarcity >= 1 ? 1 : scarcity;
+  if (s === 0) return TILE_WEIGHTS;
+  const out = {} as Record<TileType, number>;
+  for (const t of TILE_TYPES) {
+    out[t] = lerp(TILE_WEIGHTS[t], TILE_WEIGHTS[t] * SCARCITY_WEIGHT_MULTIPLIER[t], s);
+  }
+  return Object.freeze(out);
+}
+
 // ---------------------------------------------------------------------------
 // Render colours (hex). Used later for programmatic Canvas rendering.
 // ---------------------------------------------------------------------------

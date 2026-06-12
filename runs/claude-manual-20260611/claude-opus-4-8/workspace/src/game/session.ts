@@ -101,8 +101,10 @@ export interface SessionViewport {
  * Owns one match. Construct with the same `(seed, levelIndex, playerFaction,
  * aiDifficulty)` arguments as `createWorld`, plus the level's map `width`/`height`
  * (so the match map matches the campaign level's declared size rather than the
- * 48×48 default); drive with `frame(dt)` each render tick; read `world`,
- * `inputContext()`, and `result` for rendering and HUD.
+ * 48×48 default) and its `scarcity` (so the played map matches the level's
+ * terrain-constraint factor); drive with `frame(dt)` each render tick; read
+ * `world`, `inputContext()`, and `result` for rendering and HUD. `scarcity`
+ * defaults to 0, leaving the historical behaviour for callers that omit it.
  */
 export class GameSession {
   /** The live simulation state. `stepWorld` mutates only this. */
@@ -150,8 +152,9 @@ export class GameSession {
     },
     width: number = DEFAULT_MAP_WIDTH,
     height: number = DEFAULT_MAP_HEIGHT,
+    scarcity: number = 0,
   ) {
-    this.world = createWorld(seed, levelIndex, playerFaction, aiDifficulty, width, height);
+    this.world = createWorld(seed, levelIndex, playerFaction, aiDifficulty, width, height, scarcity);
     this.playerFaction = playerFaction;
     this.enemyFaction = playerFaction === "human" ? "orc" : "human";
 

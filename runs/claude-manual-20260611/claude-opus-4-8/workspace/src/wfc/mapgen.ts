@@ -27,6 +27,7 @@ import type { RNG } from "../core/rng.js";
 import { vec, manhattan } from "../core/vec.js";
 import type { Vec2 } from "../core/vec.js";
 import { solve } from "./wfc.js";
+import { scaledWeights } from "./tiles.js";
 import type { TileType } from "./tiles.js";
 
 // === Tuning constants (no magic numbers buried in the algorithm) ===
@@ -114,6 +115,23 @@ export interface MapGenResult {
   readonly grid: Grid<TileType>;
   readonly starts: readonly [Vec2, Vec2];
   readonly report: MapGenReport;
+}
+
+/**
+ * Optional per-call mapgen knobs.
+ *
+ * `scarcity` ∈ [0, 1] (clamped) is the per-level terrain-constraint factor wired
+ * from `CampaignLevel`. At 0 (the default) `generateMap` reproduces its previous
+ * behaviour bit-for-bit — `scaledWeights(0)` returns the base `TILE_WEIGHTS` by
+ * identity, so the WFC solve is unchanged. Rising values raise the collapse
+ * weight of constrained terrain (water / rock — more chokepoints) and lower that
+ * of free resources (forest / goldMine — scarcer wood and gold). The playability
+ * / repair pass runs identically at every scarcity, so the hard guarantees (two
+ * reachable starts, a gold mine + forest within reach of each) still hold.
+ */
+export interface MapGenOptions {
+  /** Terrain-constraint / resource-scarcity factor in [0, 1]; default 0. */
+  readonly scarcity?: number;
 }
 
 // === Passability + connectivity primitives ===
@@ -655,9 +673,19 @@ interface Attempt {
  *   clearings → resource guarantees → fairness top-up → final census.
  * Returns null only if the raw collapse failed (null grid) or no land exists,
  * signalling the driver to retry from a forked seed.
+ *
+ * `weights` is the (possibly scarcity-scaled) collapse-weight table; only the
+ * initial WFC solve consumes it. The repair pass — corridor carving, clearings,
+ * and the resource GUARANTEE — runs identically regardless of the weights, so a
+ * scarce solve still yields a playable map.
  */
-function attemptPlayableMap(width: number, height: number, attemptRng: RNG): Attempt | null {
-  const solved = solve(width, height, attemptRng.fork("solve"));
+function attemptPlayableMap(
+  width: number,
+  height: number,
+  attemptRng: RNG,
+  weights: ReturnType<typeof scaledWeights>,
+): Attempt | null {
+  const solved = solve(width, height, attemptRng.fork("solve"), weights);
   if (solved === null) return null;
   const grid = solved.clone();
 
@@ -713,17 +741,25 @@ function attemptPlayableMap(width: number, height: number, attemptRng: RNG): Att
 /**
  * Generates a fully-playable map for campaign `seed`, level `levelIndex`.
  *
- * Deterministic in (width, height, seed, levelIndex): identical arguments always
- * reproduce the same grid, starts, and report.  Runs up to MAX_GEN_ATTEMPTS
- * collapse/repair passes (each from a distinct forked substream); the final
- * attempt is forced through with full corridor-carving so the function always
- * returns a playable map rather than throwing.
+ * Deterministic in (width, height, seed, levelIndex, opts.scarcity): identical
+ * arguments always reproduce the same grid, starts, and report.  Runs up to
+ * MAX_GEN_ATTEMPTS collapse/repair passes (each from a distinct forked
+ * substream); the final attempt is forced through with full corridor-carving so
+ * the function always returns a playable map rather than throwing.
+ *
+ * `opts.scarcity` (default 0) raises constrained-terrain frequency and lowers
+ * free-resource frequency in the WFC solve (see `MapGenOptions`). At scarcity 0
+ * the solve uses the base `TILE_WEIGHTS` by identity, so the four-argument call
+ * is bit-identical to before this knob existed. The playability / repair pass is
+ * scarcity-independent and still GUARANTEES two reachable starts each with a gold
+ * mine + forest within reach, at every scarcity level.
  */
 export function generateMap(
   width: number,
   height: number,
   seed: number,
   levelIndex: number,
+  opts?: MapGenOptions,
 ): MapGenResult {
   if (width <= 0 || height <= 0) {
     throw new RangeError(`generateMap: dimensions must be positive, got ${width}x${height}`);
@@ -731,6 +767,11 @@ export function generateMap(
   if (!Number.isInteger(levelIndex) || levelIndex < 0) {
     throw new RangeError(`generateMap: levelIndex must be a non-negative integer, got ${levelIndex}`);
   }
+
+  // scaledWeights clamps to [0,1] and returns the base TILE_WEIGHTS (by identity)
+  // at 0, so the default path is unchanged. Computed once and shared across
+  // attempts — it is an immutable table, no per-attempt state.
+  const weights = scaledWeights(opts?.scarcity ?? 0);
 
   const base = levelRng(seed, levelIndex);
 
@@ -740,7 +781,7 @@ export function generateMap(
   for (let attempt = 0; attempt < MAX_GEN_ATTEMPTS; attempt++) {
     usedAttempts = attempt + 1;
     const attemptRng = base.fork(`attempt-${attempt}`);
-    const candidate = attemptPlayableMap(width, height, attemptRng);
+    const candidate = attemptPlayableMap(width, height, attemptRng, weights);
     if (candidate === null) continue;
 
     // Validate the hard guarantees; accept the first attempt that satisfies them.
