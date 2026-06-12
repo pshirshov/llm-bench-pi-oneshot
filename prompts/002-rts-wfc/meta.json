@@ -1,0 +1,5 @@
+{
+  "id": "002-rts-wfc",
+  "title": "In-browser Warcraft-2-style RTS with WFC level generation — v2 (hardened gates, mandated behavioral tests)",
+  "timeout_seconds": 10800
+}
