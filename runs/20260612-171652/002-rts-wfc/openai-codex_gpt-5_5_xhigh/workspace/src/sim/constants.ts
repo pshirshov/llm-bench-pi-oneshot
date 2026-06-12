@@ -1,0 +1,13 @@
+export const TICK_RATE = 20;
+export const SECONDS_PER_TICK = 1 / TICK_RATE;
+export const TILE_SIZE = 32;
+export const MAX_ORDER_STALL_TICKS = TICK_RATE * 8;
+export const REPATH_INTERVAL_TICKS = TICK_RATE;
+export const MAX_REPATH_ATTEMPTS = 24;
+export const MIN_UNIT_DISTANCE = 0.5;
+export const CAMPAIGN_LEVELS = 5;
+export const DEFAULT_SEED = 123456789;
+export const RESOURCE_SCAN_RADIUS = 48;
+export const AI_THINK_INTERVAL = TICK_RATE;
+export const CORPSE_FADE_TICKS = TICK_RATE * 4;
+export const PROJECTILE_SPEED_TILES_PER_SECOND = 8;

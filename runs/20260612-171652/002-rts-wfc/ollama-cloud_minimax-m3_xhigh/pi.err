@@ -1,0 +1,2 @@
+error (ignored): SQLite database '/home/pavel/.cache/nix/eval-cache-v6/f17d6dcccc8acd6962843392851f9fac38135c37c4df579ad6427c8137361423.sqlite' is busy
+429 "you (amazing_banzai_299) have reached your session usage limit, upgrade for higher limits: https://ollama.com/upgrade or add extra usage: https://ollama.com/settings (ref: 3a7441c1-4993-4878-bdc4-dec94ed5b323)"

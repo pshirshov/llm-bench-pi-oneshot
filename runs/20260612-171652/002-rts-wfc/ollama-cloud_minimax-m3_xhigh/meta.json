@@ -1,0 +1,9 @@
+{
+  "prompt": "002-rts-wfc",
+  "provider": "ollama-cloud",
+  "model": "minimax-m3",
+  "effort": "xhigh",
+  "exit_code": 1,
+  "status": "error",
+  "duration_seconds": 3199
+}
